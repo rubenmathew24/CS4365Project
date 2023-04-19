@@ -9,8 +9,10 @@ import random, time, util
 from game import Directions
 import game
 from distanceCalculator import Distancer
-from util import nearestPoint
+from util import nearestPoint, PriorityQueueWithFunction
 import math
+
+BIG_NUMBER = 10000
 
 #################
 # Team creation #
@@ -48,25 +50,24 @@ class DummyAgent(CaptureAgent):
     self.middleWidth = walls.width / 2    # True middle
     self.middleHeight = walls.height / 2  # True middle
     self.mapWidth = walls.width
+
+    # Find borders
+    self.teamBorder = math.floor(self.middleWidth) - 1
+    self.enemyBorder = math.floor(self.middleWidth)
+    if not gameState.isOnRedTeam(self.index):
+      self.teamBorder = math.floor(self.middleWidth)
+      self.enemyBorder = math.floor(self.middleWidth) - 1
     
     # Find exit tiles, sorted by distance from center
     if not hasattr(self, 'exits'):
-      self.exits = []
-      
-      # Find borders
-      teamBorder = math.floor(self.middleWidth) - 1
-      enemyBorder = math.floor(self.middleWidth)
-      if not gameState.isOnRedTeam(self.index):
-        teamBorder = math.floor(self.middleWidth)
-        enemyBorder = math.floor(self.middleWidth) - 1
-      
+      self.exits = [] 
       # Determine if each border tile is exit (both sides open)
       for y in range(walls.height):
-        if not walls[teamBorder][y] and not walls[enemyBorder][y]:
-          self.exits.append((teamBorder, y))
+        if not walls[self.teamBorder][y] and not walls[self.enemyBorder][y]:
+          self.exits.append((self.teamBorder, y))
       
       # Sort by distance from center
-      self.exits = sorted(self.exits, key = lambda exit : (abs(self.middleHeight - exit[1])))
+      #self.exits = sorted(self.exits, key = lambda exit : (abs(self.middleHeight - exit[1])))
       
 
   def chooseAction(self, gameState):
@@ -87,42 +88,75 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print(features * weights)
+    print(f'Agent {self.index} Eval: {features * weights}')
     return features * weights
 
 class DefensiveAgent(DummyAgent):
   
   def getFeatures(self, gameState, action):
+    # NO my info Daniel, you dont need that, only deal with succ info
+
     # Successor info
     succ = self.getSuccessor(gameState, action)
     succState = succ.getAgentState(self.index)
     succPos = succState.getPosition()
 
-    # Features
+    exitsByRisk = self.assessExitRisk(gameState, self.exits)
+    riskiestExit = exitsByRisk[0]
+    # Find next riskiest exit, don't allow adjacent exits
+    riskI = 1
+    while(abs(exitsByRisk[riskI][1] - riskiestExit[0][1]) < 2):
+      riskI += 1
+    nextRiskyExit = exitsByRisk[riskI]
+
+    ### Features ###
+    # Defensive
     features = util.Counter()
-    features['disToRiskyExit'] = self.distancer.getDistance(succPos, self.getRiskyExit(gameState, self.exits))    # Succ's distance from risky exit (exit an enemy is closest to)
-    features['enemy'] = 1 if (succPos == gameState.getAgentPosition(self.enemyIndices[0]) or succPos == gameState.getAgentPosition(self.enemyIndices[1])) else 0
+    features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
+    features['disToRiskiestExit'] = self.distancer.getDistance(succPos, riskiestExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
+    features['disToNextRiskyExit'] = self.distancer.getDistance(succPos, nextRiskyExit[0]) 
+    #enemyDisToRiskiestExit = riskyExits[0][1]
+    features['disToOffensiveEnemy'] = self.getDisToOffensiveEnemy(gameState, succPos)
+
+    # Offensive
+    features['pop'] = 1 if (succPos == gameState.getAgentPosition(self.enemyIndices[0]) or succPos == gameState.getAgentPosition(self.enemyIndices[1])) else 0
+    features['disToFood'] = min([self.getMazeDistance(succPos, food) for food in self.getFood(succ).asList()])
     return features
   
   def getWeights(self, gameState, action):
     return {
-      'disToRiskyExit': -1, # Base weight, keeps agent close to exits & border
-      'enemy': 1000         # If can eat enemy, do it  
+      'disFromBorder': -4,        # Prefer close to border
+      'disToRiskiestExit': -5,    # Prioritze enemies close to exit
+      'disToNextRiskyExit': -5,   # Balance out with riskiest, hover in between
+      'disToOffensiveEnemy': -10,  # Chase after nearby enemies
+      'disToFood': -6,
+      'pop': BIG_NUMBER           # If can eat enemy, do it  
     }
-  
-  # Finds risky exit (exit that offensive enemy can reach fastest, prefer exits closer to center)
-  def getRiskyExit(self, gameState, exits):
-    distances = [10000 for exit in exits]   # Init with large value to prefer lowest distances later
+
+  # Returns list of exits in order of risk (exit that offensive enemy can reach fastest, prefer exits closer to center)
+  def assessExitRisk(self, gameState, exits):
+    distances = [BIG_NUMBER for exit in exits]   # Init with large value to prefer lowest distances later
     # Only check with offensive enemies
     for enemy in self.enemyIndices:
       enemyPos = gameState.getAgentPosition(enemy)
       if self.inTeamSide(enemyPos):
         # Find distance between enemy and every exit
-        for exit in range(len(exits)):
-          distances[exit] = min(distances[exit], self.distancer.getDistance(exits[exit], enemyPos)) # Store min distance between existing & new to account for multiple offensive
+        for i in range(len(exits)):
+          distances[i] = min(distances[i], self.distancer.getDistance(exits[i], enemyPos)) # Store min distance between existing & new to account for multiple offensive
 
-    return exits[distances.index(min(distances))] # return exit with lowest distance
+    return sorted(zip(exits, distances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1])))
   
+  def getDisToOffensiveEnemy(self, gameState, succPos):
+    minDis = BIG_NUMBER
+    for enemy in self.enemyIndices:
+      enemyPos = gameState.getAgentPosition(enemy)
+      if self.inTeamSide(enemyPos):
+        disToEnemy = self.distancer.getDistance(succPos, enemyPos)
+        if disToEnemy < minDis:
+          minDis = disToEnemy
+    return minDis
+
+
   # Determines if agent is on our team's side
   def inTeamSide(self, pos):
     if self.redTeam: 
@@ -141,3 +175,16 @@ class DefensiveAgent(DummyAgent):
       return successor.generateSuccessor(self.index, action)
     else:
       return successor
+
+def aStar(gameState, myPos):
+  fringe = PriorityQueueWithFunction(f)
+  startNode = {'pos': myPos,
+               'g': 0,
+               'h': 0
+  }
+
+  while fringe:
+    currentNode = fringe.pop()
+
+  def f(node):
+    return node['g'] + node['h']
