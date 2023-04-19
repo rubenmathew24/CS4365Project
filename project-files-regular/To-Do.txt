@@ -1,0 +1,19 @@
+Defensive Agent
+- Split up (if risky exit occupied, find other one)
+    - If another offensive agent, find its risky exit
+    - Else, find second risky exit for lone offensive agent
+- If food on border, guard against quick grabs
+- Do we want to be more proactive, chase away from border?
+    - Pros: Less food on border
+    - Cons: Possible defensive holes
+- Power pellets. What do?
+- Possible distraction plays?
+
+
+Offensive Agent
+- Exist
+- A*? tbh depends on if we wanna blitz for early points or what
+- Most likely will need defensive agent to push in at same time as offensive to provide distraction/confusion
+- How to play around our power pellet?
+
+- Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
