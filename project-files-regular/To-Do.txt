@@ -11,10 +11,9 @@ Defensive Agent
 
 
 Offensive Agent
-- Exist
 - A*? tbh depends on if we wanna blitz for early points or what
 - Most likely will need defensive agent to push in at same time as offensive to provide distraction/confusion
-- Risk feature of more pellets = time to return 
-- How to play around our power pellet?
+- Risk feature of more pellets = time to return (Kinda done)
+- How to play around our power pellet? (Working Better)
 
 - Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
