@@ -111,12 +111,19 @@ class DummyAgent(CaptureAgent):
     else:
       return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
   
-  def noOffEnemies(self, gameState):
+  def offEnemies(self, gameState):
     for enemy in self.enemyIndices:
       enemyPos = gameState.getAgentPosition(enemy)
       if self.inTeamSide(enemyPos):
-        return False
-    return True
+        return True
+    return False
+  
+  def defEnemies(self, gameState):
+    for enemy in self.enemyIndices:
+      enemyPos = gameState.getAgentPosition(enemy)
+      if not self.inTeamSide(enemyPos):
+        return True
+    return False
     
 class DefensiveAgent(DummyAgent):
   
@@ -153,14 +160,17 @@ class DefensiveAgent(DummyAgent):
     # Defensive
     features = util.Counter()
     features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
-    features['exitMainRisk'] = 0 if self.noOffEnemies(gameState) else getDistance(succPos, mainExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
-    features['exitAltRisk'] = 0 if self.noOffEnemies(gameState) else getDistance(succPos, altExit[0])
-    features['enterMainRisk'] = 0 if not self.noOffEnemies(gameState) else getDistance(succPos, mainEnter[0])
-    features['enterAltRisk'] = 0 if not self.noOffEnemies(gameState) else getDistance(succPos, altEnter[0])
-    features['exitRiskBalance'] = abs(features['exitMainRisk'] - features['exitAltRisk'])
-    features['enterRiskBalance'] = abs(features['enterMainRisk'] - features['enterAltRisk'])
-    features['disToOffensiveEnemy'] = self.getDisToOffensiveEnemy(gameState, succPos)
     features['onEnemySide'] = not self.inTeamSide(succPos)
+    
+    if self.offEnemies(gameState):
+      features['exitMainRisk'] = getDistance(succPos, mainExit[0]) + mainExit[1]    # Succ's distance from risky exit (exit an enemy is closest to)
+      features['exitAltRisk'] = getDistance(succPos, altExit[0]) + altExit[1]
+      features['exitRiskBalance'] = abs(features['exitMainRisk'] - features['exitAltRisk'])
+      features['disToOffensiveEnemy'] = self.getDisToOffensiveEnemy(gameState, succPos)
+    if self.defEnemies(gameState):
+      features['enterMainRisk'] = getDistance(succPos, mainEnter[0]) + mainEnter[1]
+      features['enterAltRisk'] =  getDistance(succPos, altEnter[0]) + altEnter[1]
+      features['enterRiskBalance'] = abs(features['enterMainRisk'] - features['enterAltRisk'])
 
     # Offensive
     features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
@@ -174,8 +184,10 @@ class DefensiveAgent(DummyAgent):
     weights['disFromBorder'] = -1         # Prefer close to border
     weights['exitMainRisk'] = -1          # Prioritze most threatened exit
     weights['exitAltRisk'] = -1           # Balance out with riskiest, hover in between
+    weights['exitRiskBalance'] = -1
     weights['enterMainRisk'] = -.8
     weights['enterAltRisk'] = -.8
+    weights['enterRiskBalance'] = -1
     weights['disToOffensiveEnemy'] = -5   # Chase after nearby enemies
     weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
       #weights['disToFood'] = -4           # Go for nearby food if enemy is far
