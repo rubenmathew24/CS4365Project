@@ -9,7 +9,7 @@ import random, time, util
 from game import Directions
 import game
 from distanceCalculator import Distancer
-from util import nearestPoint, PriorityQueueWithFunction
+from util import nearestPoint, manhattanDistance, PriorityQueueWithFunction
 import math
 
 BIG_NUMBER = 10000
@@ -19,7 +19,7 @@ BIG_NUMBER = 10000
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DefensiveAgent', second = 'DefensiveAgent'):
+               first = 'DefensiveAgent', second = 'OffensiveAgent'):
 
   return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
@@ -68,8 +68,7 @@ class DummyAgent(CaptureAgent):
       
       # Sort by distance from center
       #self.exits = sorted(self.exits, key = lambda exit : (abs(self.middleHeight - exit[1])))
-      
-
+          
   def chooseAction(self, gameState):
     # Built-in get possible actions
     actions = gameState.getLegalActions(self.index)
@@ -77,20 +76,41 @@ class DummyAgent(CaptureAgent):
     # Evaluate each action for h value
     start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
-    print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+    #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
     # Find actions of max value
-    bestValue = min(values)
+    bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print(f'Agent {self.index} Eval: {features * weights}')
+    print("\t"+str(type(self)),action, features * weights, features, sep="\n\t")
     return features * weights
+  
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
 
+  # Determines if agent is on our team's side
+  def inTeamSide(self, pos):
+    if self.redTeam: 
+      return pos[0] in range(math.floor(self.middleWidth))
+    else:
+      return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
+    
 class DefensiveAgent(DummyAgent):
   
   def getFeatures(self, gameState, action):
@@ -102,8 +122,8 @@ class DefensiveAgent(DummyAgent):
     succPos = succState.getPosition()
 
     exitsByRisk, entersByRisk = self.assessGapRisk(gameState, self.exits)
-    print(exitsByRisk)
-    print(entersByRisk)
+    #print(exitsByRisk)
+    #print(entersByRisk)
     mainExit = exitsByRisk[0]
     mainEnter = entersByRisk[0]
     # Find next riskiest exit, don't allow adjacent exits
@@ -139,20 +159,20 @@ class DefensiveAgent(DummyAgent):
     features['pop'] = 1 if (succPos == gameState.getAgentPosition(self.enemyIndices[0]) or succPos == gameState.getAgentPosition(self.enemyIndices[1])) else 0
     features['disToFood'] = min([self.getMazeDistance(succPos, food) for food in self.getFood(succ).asList()])
 
-    print(features)
+    #print(features)
     return features
   
   def getWeights(self, gameState, action):
     return {
-      'disFromBorder': 1,        # Prefer close to border
-      'exitMainRisk': 1,    # Prioritze most threatened exit
-      'exitAltRisk': 1,   # Balance out with riskiest, hover in between
-      'enterMainRisk': .8,
-      'enterAltRisk': .8,
-      'disToOffensiveEnemy': 5,  # Chase after nearby enemies
-      'onEnemySide': 5,          # Discourage entering enemy side when unnecesary
-      #'disToFood': 4,            # Go for nearby food if enemy is far
-      'pop': -BIG_NUMBER           # If can eat enemy, do it  
+      'disFromBorder': -1,        # Prefer close to border
+      'exitMainRisk': -1,    # Prioritze most threatened exit
+      'exitAltRisk': -1,   # Balance out with riskiest, hover in between
+      'enterMainRisk': -.8,
+      'enterAltRisk': -.8,
+      'disToOffensiveEnemy': -5,  # Chase after nearby enemies
+      'onEnemySide': -5,          # Discourage entering enemy side when unnecesary
+      #'disToFood': -4,            # Go for nearby food if enemy is far
+      'pop': BIG_NUMBER           # If can eat enemy, do it  
     }
 
   # Returns list of exits in order of risk (exit that offensive enemy can reach fastest, prefer exits closer to center)
@@ -199,25 +219,48 @@ class DefensiveAgent(DummyAgent):
           minDis = disToEnemy
     return minDis
 
+class OffensiveAgent(DummyAgent):
 
-  # Determines if agent is on our team's side
-  def inTeamSide(self, pos):
-    if self.redTeam: 
-      return pos[0] in range(math.floor(self.middleWidth))
+  def getFeatures(self, gameState, action):
+    features = util.Counter()
+    successor = self.getSuccessor(gameState, action)
+    foodList = self.getFood(successor).asList()  
+    enemyList = self.getOpponents(successor)
+    myPos = successor.getAgentState(self.index).getPosition()
+
+    # Prioritize eating food
+    features['successorScore'] = -len(foodList)#self.getScore(successor)
+
+    # Compute distance to the nearest food
+    if len(foodList) > 0: # This should always be True,  but better safe than sorry
+      minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+      features['distanceToFood'] = minDistance
+
+    # Stops it from stalling
+    if action == Directions.STOP: features['risk'] = 1000
+    else: features['risk'] = 0
+
+    # Compute distance to the nearest enemy (only appropriate if we're on the enemy's side)
+    if len(enemyList) > 0 and not self.inTeamSide(myPos):
+      minDistance = min([manhattanDistance(myPos, successor.getAgentState(enemy).getPosition()) for enemy in enemyList])
+      features['notableDistanceFromEnemy'] = max(7-minDistance, 0)
     else:
-      return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
-    
-  def getSuccessor(self, gameState, action):
-    """
-    Finds the next successor which is a grid position (location tuple).
-    """
-    successor = gameState.generateSuccessor(self.index, action)
-    pos = successor.getAgentState(self.index).getPosition()
-    if pos != nearestPoint(pos):
-      # Only half a grid position was covered
-      return successor.generateSuccessor(self.index, action)
-    else:
-      return successor
+      features['notableDistanceFromEnemy'] = 0
+
+    # Compute distance to the nearest exit
+    if len(self.exits) > 0: # This should always be True,  but better safe than sorry
+      minDistance = min([self.getMazeDistance(myPos, exit) for exit in self.exits])
+      features['distanceToExit'] += minDistance * max(features['notableDistanceFromEnemy'], 1)
+
+    return features
+
+  def getWeights(self, gameState, action):
+    return {'successorScore': 100, # Prioritize eating food
+            'distanceToFood': -4,  # Prioritize getting close to food
+            'distanceToExit': -2,  # Prioritize getting close to exit
+            'notableDistanceFromEnemy' : -200, # Prioritize getting far from enemy
+            'risk' : -1 # Don't do risky actions
+            }
 
 def aStar(gameState, startPos, endPos):
   fringe = PriorityQueueWithFunction(f)
@@ -241,7 +284,6 @@ def aStar(gameState, startPos, endPos):
           currentNode = currentNode['ancestor']
       return path
     
-
 
   def f(node):
     return node['g'] + node['h']
