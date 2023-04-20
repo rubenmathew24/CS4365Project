@@ -27,6 +27,7 @@ import random, time, util, sys
 from game import Directions
 import game
 from util import nearestPoint
+from myTeam import DefensiveAgent, OffensiveAgent
 
 #################
 # Team creation #

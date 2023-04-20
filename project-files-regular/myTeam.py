@@ -111,7 +111,7 @@ class DummyAgent(CaptureAgent):
     else:
       return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
   
-  def noEnemies(self, gameState):
+  def noOffEnemies(self, gameState):
     for enemy in self.enemyIndices:
       enemyPos = gameState.getAgentPosition(enemy)
       if self.inTeamSide(enemyPos):
@@ -129,8 +129,6 @@ class DefensiveAgent(DummyAgent):
     succPos = succState.getPosition()
 
     exitsByRisk, entersByRisk = self.assessGapRisk(gameState, self.exits)
-    #print(exitsByRisk)
-    #print(entersByRisk)
     mainExit = exitsByRisk[0]
     mainEnter = entersByRisk[0]
     # Find next riskiest exit, don't allow adjacent exits
@@ -151,36 +149,39 @@ class DefensiveAgent(DummyAgent):
     self.debugDraw(altEnter[0], [.4,1,.4])
 
     ### Features ###
+    getDistance = self.distancer.getDistance
     # Defensive
     features = util.Counter()
     features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
-    features['exitMainRisk'] = 0 if self.noEnemies(gameState) else self.distancer.getDistance(succPos, mainExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
-    features['exitAltRisk'] = 0 if self.noEnemies(gameState) else self.distancer.getDistance(succPos, altExit[0])
-    features['enterMainRisk'] = self.distancer.getDistance(succPos, mainEnter[0])
-    features['enterAltRisk'] = self.distancer.getDistance(succPos, altEnter[0])
+    features['exitMainRisk'] = 0 if self.noOffEnemies(gameState) else getDistance(succPos, mainExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
+    features['exitAltRisk'] = 0 if self.noOffEnemies(gameState) else getDistance(succPos, altExit[0])
+    features['enterMainRisk'] = 0 if not self.noOffEnemies(gameState) else getDistance(succPos, mainEnter[0])
+    features['enterAltRisk'] = 0 if not self.noOffEnemies(gameState) else getDistance(succPos, altEnter[0])
     features['exitRiskBalance'] = abs(features['exitMainRisk'] - features['exitAltRisk'])
+    features['enterRiskBalance'] = abs(features['enterMainRisk'] - features['enterAltRisk'])
     features['disToOffensiveEnemy'] = self.getDisToOffensiveEnemy(gameState, succPos)
     features['onEnemySide'] = not self.inTeamSide(succPos)
 
     # Offensive
-    features['pop'] = 1 if (succPos == gameState.getAgentPosition(self.enemyIndices[0]) or succPos == gameState.getAgentPosition(self.enemyIndices[1])) else 0
+    features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
     features['disToFood'] = min([self.getMazeDistance(succPos, food) for food in self.getFood(succ).asList()])
 
     #print(features)
     return features
   
   def getWeights(self, gameState, action):
-    return {
-      'disFromBorder': -1,        # Prefer close to border
-      'exitMainRisk': -1,    # Prioritze most threatened exit
-      'exitAltRisk': -1,   # Balance out with riskiest, hover in between
-      'enterMainRisk': -.8,
-      'enterAltRisk': -.8,
-      'disToOffensiveEnemy': -5,  # Chase after nearby enemies
-      'onEnemySide': -5,          # Discourage entering enemy side when unnecesary
-      #'disToFood': -4,            # Go for nearby food if enemy is far
-      'pop': BIG_NUMBER           # If can eat enemy, do it  
-    }
+    weights = {}
+    weights['disFromBorder'] = -1         # Prefer close to border
+    weights['exitMainRisk'] = -1          # Prioritze most threatened exit
+    weights['exitAltRisk'] = -1           # Balance out with riskiest, hover in between
+    weights['enterMainRisk'] = -.8
+    weights['enterAltRisk'] = -.8
+    weights['disToOffensiveEnemy'] = -5   # Chase after nearby enemies
+    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
+      #weights['disToFood'] = -4           # Go for nearby food if enemy is far
+    weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
+    print(weights)
+    return weights
 
   # Returns list of exits in order of risk (exit that offensive enemy can reach fastest, prefer exits closer to center)
   def assessGapRisk(self, gameState, exits):
