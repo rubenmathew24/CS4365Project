@@ -110,6 +110,13 @@ class DummyAgent(CaptureAgent):
       return pos[0] in range(math.floor(self.middleWidth))
     else:
       return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
+  
+  def noEnemies(self, gameState):
+    for enemy in self.enemyIndices:
+      enemyPos = gameState.getAgentPosition(enemy)
+      if self.inTeamSide(enemyPos):
+        return False
+    return True
     
 class DefensiveAgent(DummyAgent):
   
@@ -147,8 +154,8 @@ class DefensiveAgent(DummyAgent):
     # Defensive
     features = util.Counter()
     features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
-    features['exitMainRisk'] = self.distancer.getDistance(succPos, mainExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
-    features['exitAltRisk'] = self.distancer.getDistance(succPos, altExit[0])
+    features['exitMainRisk'] = 0 if self.noEnemies(gameState) else self.distancer.getDistance(succPos, mainExit[0])    # Succ's distance from risky exit (exit an enemy is closest to)
+    features['exitAltRisk'] = 0 if self.noEnemies(gameState) else self.distancer.getDistance(succPos, altExit[0])
     features['enterMainRisk'] = self.distancer.getDistance(succPos, mainEnter[0])
     features['enterAltRisk'] = self.distancer.getDistance(succPos, altEnter[0])
     features['exitRiskBalance'] = abs(features['exitMainRisk'] - features['exitAltRisk'])
