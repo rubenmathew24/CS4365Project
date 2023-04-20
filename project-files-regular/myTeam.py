@@ -89,7 +89,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\t"+str(type(self)),action, features * weights, features, sep="\n\t")
+    print("\t"+action + ":" + str(features * weights), features, sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -221,31 +221,89 @@ class DefensiveAgent(DummyAgent):
 
 class OffensiveAgent(DummyAgent):
 
+  def registerInitialState(self, gameState):
+    DummyAgent.registerInitialState(self, gameState)
+
+    # Save the default weights because weights can be changed
+    self.defaults = {'eatFood': 100, # Prioritize eating food
+                    'eatCapsule': 2000, # Prioritize eating capsules
+                    'distanceToCapsule': -40,  # Prioritize getting close to capsules
+                    'distanceToFood': -10,  # Prioritize getting close to food
+                    'distanceToExit': -1,  # Prioritize getting close to exit
+                    'notableDistanceFromEnemy' : -25, # Prioritize getting far from enemy
+                    'neverStop' : -1 # Be a shark, never stop moving
+                    }
+
+    # Weights that will be returned
+    self.weights = {'eatFood': self.defaults['eatFood'], 
+                    'eatCapsule': self.defaults['eatCapsule'], 
+                    'distanceToCapsule': self.defaults['distanceToCapsule'], 
+                    'distanceToFood': self.defaults['distanceToFood'], 
+                    'distanceToExit': self.defaults['distanceToExit'], 
+                    'notableDistanceFromEnemy': self.defaults['notableDistanceFromEnemy'], 
+                    'neverStop': self.defaults['neverStop']
+                    }
+
   def getFeatures(self, gameState, action):
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
     foodList = self.getFood(successor).asList()  
+    capsuleList = self.getCapsules(successor)
     enemyList = self.getOpponents(successor)
     myPos = successor.getAgentState(self.index).getPosition()
+    numCarrying = successor.getAgentState(self.index).numCarrying
 
     # Prioritize eating food
-    features['successorScore'] = -len(foodList)#self.getScore(successor)
+    features['eatFood'] = -len(foodList)
+
+    # Priortize eating capsules
+    features['eatCapsule'] = -len(capsuleList)
+
+    # Compute distance to the nearest capsule
+    if len(capsuleList) > 0: 
+      minDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+      features['distanceToCapsule'] = minDistance
 
     # Compute distance to the nearest food
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
       features['distanceToFood'] = minDistance
 
+    # Increase weight of distance to exit with the more food we have
+    self.weights['distanceToExit'] = -numCarrying
+
     # Stops it from stalling
-    if action == Directions.STOP: features['risk'] = 1000
-    else: features['risk'] = 0
+    if action == Directions.STOP: features['neverStop'] += 9999999
 
     # Compute distance to the nearest enemy (only appropriate if we're on the enemy's side)
     if len(enemyList) > 0 and not self.inTeamSide(myPos):
       minDistance = min([manhattanDistance(myPos, successor.getAgentState(enemy).getPosition()) for enemy in enemyList])
-      features['notableDistanceFromEnemy'] = max(7-minDistance, 0)
+      features['notableDistanceFromEnemy'] = max(5-minDistance, 0)
+
+      if minDistance < 3: self.weights['notableDistanceFromEnemy'] = -100
+      else: self.weights['notableDistanceFromEnemy'] = self.defaults['notableDistanceFromEnemy']
     else:
       features['notableDistanceFromEnemy'] = 0
+
+    # If capsule is active
+    scaredTime = max([(successor.getAgentState(enemy).scaredTimer) for enemy in enemyList])
+    if scaredTime > 0:
+      # If we're carrying food, prioritize getting home
+      if numCarrying > 4: self.weights['distanceToExit'] = -100
+      else: self.weights['distanceToExit'] = -numCarrying * 2
+
+      # Try not to get other capsules
+      self.weights['distanceToCapsule'] = 100
+
+      # Chase enemy if they're close AND if timer isn't low
+      if scaredTime > 15:
+        features['notableDistanceFromEnemy'] = -features['notableDistanceFromEnemy'] * 60
+        if features['notableDistanceFromEnemy'] == 0: features['notableDistanceFromEnemy'] = -3000
+
+    # Reset weights if capsule not active
+    else:
+      self.weights['distanceToCapsule'] = self.defaults['distanceToCapsule']
+      self.weights['distanceToExit'] = -numCarrying
 
     # Compute distance to the nearest exit
     if len(self.exits) > 0: # This should always be True,  but better safe than sorry
@@ -255,12 +313,7 @@ class OffensiveAgent(DummyAgent):
     return features
 
   def getWeights(self, gameState, action):
-    return {'successorScore': 100, # Prioritize eating food
-            'distanceToFood': -4,  # Prioritize getting close to food
-            'distanceToExit': -2,  # Prioritize getting close to exit
-            'notableDistanceFromEnemy' : -200, # Prioritize getting far from enemy
-            'risk' : -1 # Don't do risky actions
-            }
+    return self.weights
 
 def aStar(gameState, startPos, endPos):
   fringe = PriorityQueueWithFunction(f)
