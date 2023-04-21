@@ -15,5 +15,13 @@ Offensive Agent
 - Most likely will need defensive agent to push in at same time as offensive to provide distraction/confusion
 - Risk feature of more pellets = time to return (Kinda done)
 - How to play around our power pellet? (Working Better)
+- Maps to focus on later:
+    - 4903
+    - 1492
+    - 2923 (winning state, but does a really stupid move)
+    - 4900
+
 
 - Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
+
+
