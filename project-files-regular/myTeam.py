@@ -11,6 +11,7 @@ import game
 from distanceCalculator import Distancer
 from util import nearestPoint, manhattanDistance, PriorityQueueWithFunction
 import math
+import sys
 
 BIG_NUMBER = 10000
 
@@ -60,15 +61,12 @@ class DummyAgent(CaptureAgent):
     
     # Find exit tiles, sorted by distance from center
     if not hasattr(self, 'exits'):
-      self.exits = [] 
+      self.gaps = [] 
       # Determine if each border tile is exit (both sides open)
       for y in range(walls.height):
         if not walls[self.teamBorder][y] and not walls[self.enemyBorder][y]:
-          self.exits.append((self.teamBorder, y))
+          self.gaps.append((self.teamBorder, y))
       
-      # Sort by distance from center
-      #self.exits = sorted(self.exits, key = lambda exit : (abs(self.middleHeight - exit[1])))
-          
   def chooseAction(self, gameState):
     # Built-in get possible actions
     actions = gameState.getLegalActions(self.index)
@@ -81,15 +79,15 @@ class DummyAgent(CaptureAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -105,139 +103,11 @@ class DummyAgent(CaptureAgent):
       return successor
 
   # Determines if agent is on our team's side
-  def inTeamSide(self, pos):
+  def onTeamSide(self, pos):
     if self.redTeam: 
       return pos[0] in range(math.floor(self.middleWidth))
     else:
       return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
-  
-  def offEnemies(self, gameState):
-    for enemy in self.enemyIndices:
-      enemyPos = gameState.getAgentPosition(enemy)
-      if self.inTeamSide(enemyPos):
-        return True
-    return False
-  
-  def defEnemies(self, gameState):
-    for enemy in self.enemyIndices:
-      enemyPos = gameState.getAgentPosition(enemy)
-      if not self.inTeamSide(enemyPos):
-        return True
-    return False
-    
-class DefensiveAgent(DummyAgent):
-  
-  def getFeatures(self, gameState, action):
-    # NO my info Daniel, you dont need that, only deal with succ info
-
-    # Successor info
-    succ = self.getSuccessor(gameState, action)
-    succState = succ.getAgentState(self.index)
-    succPos = succState.getPosition()
-
-    exitsByRisk, entersByRisk = self.assessGapRisk(gameState, self.exits)
-    mainExit = exitsByRisk[0]
-    mainEnter = entersByRisk[0]
-    # Find next riskiest exit, don't allow adjacent exits
-    exitI = 1
-    while(abs(exitsByRisk[exitI][1] - mainExit[0][1]) < 2):
-      exitI += 1
-    altExit = exitsByRisk[exitI]
-    
-    enterI = 1
-    while(abs(entersByRisk[enterI][1] - mainEnter[0][1]) < 2):
-      enterI += 1
-    altEnter = entersByRisk[enterI]
-
-    # Draw risky exits
-    self.debugDraw(mainExit[0], [1,0,0], clear=True)
-    self.debugDraw(altExit[0], [1,.4,.4])
-    self.debugDraw(mainEnter[0], [0,1,0])
-    self.debugDraw(altEnter[0], [.4,1,.4])
-
-    ### Features ###
-    getDistance = self.distancer.getDistance
-    # Defensive
-    features = util.Counter()
-    features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
-    features['onEnemySide'] = not self.inTeamSide(succPos)
-    
-    if self.offEnemies(gameState):
-      features['exitMainRisk'] = getDistance(succPos, mainExit[0]) + mainExit[1]    # Succ's distance from risky exit (exit an enemy is closest to)
-      features['exitAltRisk'] = getDistance(succPos, altExit[0]) + altExit[1]
-      features['exitRiskBalance'] = abs(features['exitMainRisk'] - features['exitAltRisk'])
-      features['disToOffensiveEnemy'] = self.getDisToOffensiveEnemy(gameState, succPos)
-    if self.defEnemies(gameState):
-      features['enterMainRisk'] = getDistance(succPos, mainEnter[0]) + mainEnter[1]
-      features['enterAltRisk'] =  getDistance(succPos, altEnter[0]) + altEnter[1]
-      features['enterRiskBalance'] = abs(features['enterMainRisk'] - features['enterAltRisk'])
-
-    # Offensive
-    features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
-    features['disToFood'] = min([self.getMazeDistance(succPos, food) for food in self.getFood(succ).asList()])
-
-    #print(features)
-    return features
-  
-  def getWeights(self, gameState, action):
-    weights = {}
-    weights['disFromBorder'] = -1         # Prefer close to border
-    weights['exitMainRisk'] = -1          # Prioritze most threatened exit
-    weights['exitAltRisk'] = -1           # Balance out with riskiest, hover in between
-    weights['exitRiskBalance'] = -1
-    weights['enterMainRisk'] = -.8
-    weights['enterAltRisk'] = -.8
-    weights['enterRiskBalance'] = -1
-    weights['disToOffensiveEnemy'] = -5   # Chase after nearby enemies
-    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
-      #weights['disToFood'] = -4           # Go for nearby food if enemy is far
-    weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
-    print(weights)
-    return weights
-
-  # Returns list of exits in order of risk (exit that offensive enemy can reach fastest, prefer exits closer to center)
-  def assessGapRisk(self, gameState, exits):
-    exitDistances = [BIG_NUMBER for exit in exits]   # Init with large value to prefer lowest distances later
-    enterDistances = [BIG_NUMBER for exit in exits]   # Init with large value to prefer lowest distances later
-
-    # Only check with offensive enemies
-    for enemy in self.enemyIndices:
-      enemyPos = gameState.getAgentPosition(enemy)
-      # Find distance between enemy and every exit
-      for i in range(len(exits)):
-        if self.inTeamSide(enemyPos):
-          exitDistances[i] = min(exitDistances[i], self.distancer.getDistance(exits[i], enemyPos)) # Store min distance between existing & new to account for multiple offensive
-        else:
-          enterDistances[i] = min(enterDistances[i], self.distancer.getDistance(exits[i], enemyPos))
-
-    return (sorted(zip(exits, exitDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1]))),
-            sorted(zip(exits, enterDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1]))))
-  
-  def getClosestOffEnemyPos(self, gameState, succPos):
-      closestPos = None
-      minDis = BIG_NUMBER
-      for enemy in self.enemyIndices:
-        enemyPos = gameState.getAgentPosition(enemy)
-        if self.inTeamSide(enemyPos):
-          if closestPos == None:
-            closestPos = enemyPos
-            minDis = self.distancer.getDistance(succPos, enemyPos)
-          else:
-            disToEnemy = self.distancer.getDistance(succPos, enemyPos)
-            if disToEnemy < minDis:
-              closestPos = enemyPos
-              minDis = self.distancer.getDistance(succPos, enemyPos)
-      return closestPos
-
-  def getDisToOffensiveEnemy(self, gameState, succPos):
-    minDis = BIG_NUMBER
-    for enemy in self.enemyIndices:
-      enemyPos = gameState.getAgentPosition(enemy)
-      if self.inTeamSide(enemyPos):
-        disToEnemy = self.distancer.getDistance(succPos, enemyPos)
-        if disToEnemy < minDis:
-          minDis = disToEnemy
-    return minDis
 
 class OffensiveAgent(DummyAgent):
 
@@ -281,7 +151,7 @@ class OffensiveAgent(DummyAgent):
 
 
     # Prioritize not being our side unless its an exit
-    if self.inTeamSide(myPos) and myPos not in self.exits:
+    if self.onTeamSide(myPos) and myPos not in self.gaps:
       features['onOurSide'] = 1
 
     # Prioritize eating food
@@ -325,8 +195,8 @@ class OffensiveAgent(DummyAgent):
 
     # Compute distance to the nearest exit
     minDistanceToExit = 1000
-    if len(self.exits) > 0: # This should always be True,  but better safe than sorry
-      minDistance = min([self.getMazeDistance(myPos, exit) for exit in self.exits])
+    if len(self.gaps) > 0: # This should always be True,  but better safe than sorry
+      minDistance = min([self.getMazeDistance(myPos, exit) for exit in self.gaps])
       minDistanceToExit = minDistance
       features['distanceToExit'] += minDistance * max(features['notableDistanceFromEnemy'], 1)
 
@@ -334,7 +204,7 @@ class OffensiveAgent(DummyAgent):
     self.weights['distanceToExit'] = -numCarrying*5
 
     # If can make a quick getaway, do it
-    currentDistanceFromExit = min([self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), exit) for exit in self.exits])
+    currentDistanceFromExit = min([self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), exit) for exit in self.gaps])
     if numCarrying >= 2 and currentDistanceFromExit < 5:
       features = util.Counter()
       features['quickGetaway'] = 2
@@ -351,7 +221,7 @@ class OffensiveAgent(DummyAgent):
       actualDistanceFromEnemy = min([self.getMazeDistance(myPos, successor.getAgentState(enemy).getPosition()) for enemy in enemyList])
 
       # If on our side, keep a lower distance away from enemy
-      features['notableDistanceFromEnemy'] = max((3 if self.inTeamSide(myPos) else 5)-minDistance, 0)
+      features['notableDistanceFromEnemy'] = max((3 if self.onTeamSide(myPos) else 5)-minDistance, 0)
       if actualDistanceFromEnemy > minDistance + 5: features['notableDistanceFromEnemy'] = 0
 
       # If enemy is FAR away, don't increase food weight
@@ -390,28 +260,218 @@ class OffensiveAgent(DummyAgent):
   def getWeights(self, gameState, action):
     return self.weights
 
-def aStar(gameState, startPos, endPos):
-  fringe = PriorityQueueWithFunction(f)
-  startNode = {'pos': startPos,
-               'ancestor': None,
-               'g': 0,
-               'h': 0
-  }
-  fringe.push(startNode)
+class DefensiveAgent(DummyAgent):
+  def registerInitialState(self, gameState):
 
-  expanded = []
-  while fringe:
-    currentNode = fringe.pop()
-  if currentNode['state'] not in expanded:
-    expanded.append(currentNode['state'])
+    # Built-in register, provides real distancer
+    CaptureAgent.registerInitialState(self, gameState)
 
-    if currentNode['pos'] == endPos:
-      path = []
-      while (currentNode['ancestor'] is not None):
-          path.insert(0, currentNode['pos'])
-          currentNode = currentNode['ancestor']
-      return path
+    # Determine team/side
+    self.redTeam = gameState.isOnRedTeam(self.index)
     
+    # Indices of each agent
+    self.teamIndices = gameState.getRedTeamIndices()
+    self.enemyIndices = gameState.getBlueTeamIndices()
+    if not self.redTeam:
+      self.teamIndices = gameState.getBlueTeamIndices()
+      self.enemyIndices = gameState.getRedTeamIndices()
 
-  def f(node):
-    return node['g'] + node['h']
+    # Important positions
+    self.startPos = gameState.getAgentPosition(self.index)
+    walls = gameState.getWalls()
+    self.middleWidth = walls.width / 2    # True middle
+    self.middleHeight = walls.height / 2  # True middle
+    self.mapWidth = walls.width
+
+    # Find borders
+    self.teamBorder = math.floor(self.middleWidth) - 1
+    self.enemyBorder = math.floor(self.middleWidth)
+    if not gameState.isOnRedTeam(self.index):
+      self.teamBorder = math.floor(self.middleWidth)
+      self.enemyBorder = math.floor(self.middleWidth) - 1
+    
+    # Find exit tiles, sorted by distance from center
+    if not hasattr(self, 'exits'):
+      self.gaps = [] 
+      # Determine if each border tile is exit (both sides open)
+      for y in range(walls.height):
+        if not walls[self.teamBorder][y] and not walls[self.enemyBorder][y]:
+          self.gaps.append((self.teamBorder, y))
+      
+    # Enemy Info
+    enemy1Index = self.enemyIndices[0]
+    self.enemy1 = {}
+    self.enemy1['index'] = enemy1Index
+    self.enemy1['pos'] = gameState.getAgentPosition(self.enemy1['index'])
+    self.enemy1['movesSpentAttacking'] = 0
+
+    enemy2Index = self.enemyIndices[1]
+    self.enemy2 = {}
+    self.enemy2['index'] = enemy2Index
+    self.enemy2['pos'] = gameState.getAgentPosition(self.enemy2['index'])
+    self.enemy2['movesSpentAttacking'] = 0
+
+    # Misc Info
+    self.quickGrab = False
+      
+  def chooseAction(self, gameState):
+    # Built-in get possible actions
+    actions = gameState.getLegalActions(self.index)
+    myPos = gameState.getAgentPosition(self.index)
+
+    # Collect enemy info
+    enemy1Gaps = self.findClosestGaps(self.enemy1['pos'])
+    self.enemy1['gapMain'] = enemy1Gaps[0]
+    self.enemy1['gapAlt'] = enemy1Gaps[1]
+    self.enemy1['pos'] = gameState.getAgentPosition(self.enemy1['index'])
+    self.enemy1['onTeamSide'] = self.onTeamSide(self.enemy1['pos'])
+    enemy2Gaps = self.findClosestGaps(self.enemy2['pos'])
+    self.enemy2['gapMain'] = enemy2Gaps[0]
+    self.enemy2['gapAlt'] = enemy2Gaps[1]
+    self.enemy2['pos'] = gameState.getAgentPosition(self.enemy2['index'])
+    self.enemy2['onTeamSide'] = self.onTeamSide(self.enemy2['pos'])
+
+    if self.enemy1['onTeamSide']:
+      self.enemy1['movesSpentAttacking'] += 1
+    if self.enemy2['onTeamSide']:
+      self.enemy2['movesSpentAttacking'] += 1
+    
+    # Look for quick grabs
+    if not self.quickGrab:
+      foodList = self.getFood(gameState).asList()
+      if len(foodList) > 0:
+        disToFood = BIG_NUMBER
+        for food in foodList:
+          foodDis = self.getMazeDistance(myPos, food)
+          if foodDis < disToFood:
+            disToFood = foodDis
+            self.quickGrabPos = food
+        disToQuickGrab = disToFood + self.findClosestGaps(self.quickGrabPos)[0][1]
+        if disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1]):
+          self.quickGrab = True
+        else:
+            self.quickGrabPos = None
+    if myPos == self.quickGrabPos:
+      self.quickGrab = False
+      self.quickGrabPos = None
+    if self.quickGrabPos:
+      self.debugDraw(self.quickGrabPos, [0,1,0])
+
+    # Evaluate each action for h value
+    #start = time.time()
+    values = [self.evaluate(gameState, a) for a in actions]
+    #evalTime = time.time() - start
+    #if evalTime > 1:
+    #  print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
+    #  sys.exit()
+    #print('eval time for agent %d: %.4f' % (self.index, evalTime))
+
+    # Find actions of max value
+    bestValue = max(values)
+    bestActions = [a for a, v in zip(actions, values) if v == bestValue]
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
+    return random.choice(bestActions)   # Return random best action
+  
+  def evaluate(self, gameState, action):
+    # Determines value based on features and their weights
+    features = None
+    if self.quickGrab:
+      features = self.getFeatures_QuickGrab(gameState, action)
+    else:
+      features = self.getFeatures(gameState, action)
+    weights = self.getWeights(gameState, action)
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    return features * weights
+  
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
+  
+  def getFeatures(self, gameState, action):
+    # Successor info
+    succ = self.getSuccessor(gameState, action)
+    succState = succ.getAgentState(self.index)
+    succPos = succState.getPosition()
+
+    # Enemy Info
+    
+    self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
+    self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
+    mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
+    self.debugDraw(mainEnemy['pos'], [1,0,0])
+
+    # Draw gaps
+    self.debugDraw(self.enemy1['gapMain'][0], [1,0,0], clear=True)
+    self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
+    self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
+    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
+
+    ### Features ###
+    features = util.Counter()
+    features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
+    features['onEnemySide'] = not self.onTeamSide(succPos)
+    features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
+    features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
+    features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
+    features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
+    return features
+  
+  def getFeatures_QuickGrab(self, gameState, action):
+    # Successor info
+    succ = self.getSuccessor(gameState, action)
+    succState = succ.getAgentState(self.index)
+    succPos = succState.getPosition()
+
+    # Features
+    features = util.Counter()
+    features['disToFood'] = self.getMazeDistance(succPos, self.quickGrabPos)
+    return features
+  
+  def getWeights(self, gameState, action):
+    weights = {}
+    weights['disFromBorder'] = -1         # Prefer close to border
+    weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
+    weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
+    weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
+    weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
+    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
+    weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
+    weights['disToFood'] = -1             # For quickgrabbing
+    return weights
+
+  def assessEnemies(self, enemy1, enemy2):
+    return max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
+
+  def getDisToOffensiveEnemy(self, gameState, succPos):
+    minDis = BIG_NUMBER
+    for enemy in self.enemyIndices:
+      enemyPos = gameState.getAgentPosition(enemy)
+      if self.onTeamSide(enemyPos):
+        disToEnemy = self.getMazeDistance(succPos, enemyPos)
+        if disToEnemy < minDis:
+          minDis = disToEnemy
+    return minDis
+  
+  # Determines if agent is on our team's side
+  def onTeamSide(self, pos):
+    if self.redTeam: 
+      return pos[0] in range(math.floor(self.middleWidth))
+    else:
+      return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
+    
+  # Returns list of gaps sorted by proximity
+  def findClosestGaps(self, pos):
+    gapDistances = []
+    for gap in self.gaps:
+      gapDistances.append(self.getMazeDistance(gap, pos))
+    gapsByDis = sorted(zip(self.gaps, gapDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1])))
+    return gapsByDis
