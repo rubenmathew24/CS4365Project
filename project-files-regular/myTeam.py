@@ -79,15 +79,15 @@ class DummyAgent(CaptureAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    #print(list(zip(actions,values)))
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -114,6 +114,7 @@ class OffensiveAgent(DummyAgent):
   def registerInitialState(self, gameState):
     DummyAgent.registerInitialState(self, gameState)
 
+    self.history = []
     self.totalFood = len(self.getFood(gameState).asList())
     self.risky = self.findRiskyPositions(gameState)
 
@@ -125,7 +126,7 @@ class OffensiveAgent(DummyAgent):
                     'distanceToExit': -1,  # Prioritize getting close to exit
                     'notableDistanceFromEnemy' : -25, # Prioritize getting far from enemy
                     'neverStop' : -1, # Be a shark, never stop moving
-                    'onOurSide' : -10, # Discourage staying on our side
+                    'onOurSide' : -40, # Discourage staying on our side
                     'risky': -100, # Discourage going to risky positions
                     'quickGetaway' : 100 # If can quickly deposit food, do it
                     }
@@ -143,6 +144,34 @@ class OffensiveAgent(DummyAgent):
                     'quickGetaway': self.defaults['quickGetaway']
                     }
 
+  # Used to DEBUG
+  def chooseAction(self, gameState):
+    # Built-in get possible actions
+    actions = gameState.getLegalActions(self.index)
+
+    # Evaluate each action for h value
+    start = time.time()
+    values = [self.evaluate(gameState, a) for a in actions]
+    #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+
+    # Find actions of max value
+    bestValue = max(values)
+    bestActions = [a for a, v in zip(actions, values) if v == bestValue]
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
+
+    move = random.choice(bestActions)
+    self.history.append(move)
+
+    # DEBUG TO FIND WHEN IT STARTS DOING THE GRIDDY
+    # if len(self.history) > 6:
+    #   temp = self.history[-6:]
+    #   if temp[0] == temp[2] == temp[4] and temp[1] == temp[3] == temp[5] and temp[0] != temp[1]:
+    #     print("Stuck in loop")
+    #     exit(0)
+
+    return move # Return random best action
+
   def getFeatures(self, gameState, action):
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
@@ -158,6 +187,9 @@ class OffensiveAgent(DummyAgent):
     # Prioritize not being our side unless its an exit
     if self.onTeamSide(myPos) and myPos not in self.gaps:
       features['onOurSide'] = 1
+      self.weights['distanceToExit'] = -10
+    else:
+      self.weights['distanceToExit'] = self.defaults['distanceToExit']
 
     # Prioritize eating food
     features['eatFood'] = -len(foodList)
@@ -220,7 +252,7 @@ class OffensiveAgent(DummyAgent):
       if self.getScore(successor) > 0: self.weights['distanceToFood'] = -5
 
     # Increase weight of distance to exit with the more food we have
-    self.weights['distanceToExit'] = -numCarrying*5
+    self.weights['distanceToExit'] += -numCarrying*5
 
     # Compute distance to the nearest enemy
     actualDistanceFromEnemy = 1000
@@ -238,9 +270,15 @@ class OffensiveAgent(DummyAgent):
       else:
         self.weights['risky'] = self.defaults['risky']
 
-      # If enemy is FAR away, increase food weight
+      # If enemy is FAR away, increase food weight, don't worry about anything else
       if actualDistanceFromEnemy > 15: 
-        features['eatFood'] = features['eatFood'] * 2
+        tempDistance = features['distanceToFood']
+        features = util.Counter()
+        features['eatFood'] = -len(foodList)
+        features['distanceToFood'] = tempDistance
+        self.weights['distanceToFood'] = self.defaults['distanceToFood'] * 10000
+
+        return features
 
       # If enemy is incredibly close, prioritize getting away
       if actualDistanceFromEnemy < 3 and currentDistanceFromExit > 3: self.weights['notableDistanceFromEnemy'] = -100
@@ -266,8 +304,9 @@ class OffensiveAgent(DummyAgent):
       if numCarrying > 4: self.weights['distanceToExit'] = -10000
       else: self.weights['distanceToExit'] = -numCarrying * 20
 
-      # Try not to get other capsules
-      self.weights['distanceToCapsule'] = 5
+      # Try not to get other capsules if plenty of time left
+      if scaredTime > 15: 
+        self.weights['distanceToCapsule'] = 5
 
       # Chase enemy if they're close AND if timer isn't low
       if scaredTime > 15:
