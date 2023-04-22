@@ -71,7 +71,7 @@ class DummyAgent(CaptureAgent):
     actions = gameState.getLegalActions(self.index)
 
     # Evaluate each action for h value
-    self.debugClear()
+    #self.debugClear()
     start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
     #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
@@ -79,15 +79,15 @@ class DummyAgent(CaptureAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -151,15 +151,15 @@ class OffensiveAgent(DummyAgent):
 
     # Evaluate each action for h value
     #start = time.time()
-    self.debugClear()
+    #self.debugClear()
     values = [self.evaluate(gameState, a) for a in actions]
     #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
     self.history.append(move)
@@ -204,9 +204,9 @@ class OffensiveAgent(DummyAgent):
       features['distanceToCapsule'] = minDistance
 
       # DEBUG draw the closest capsule
-      for capsule in capsuleList:
+      """for capsule in capsuleList:
         if self.getMazeDistance(myPos, capsule) == minDistance:
-          self.debugDraw(capsule, [0,0.8,0.8])
+          self.debugDraw(capsule, [0,0.8,0.8])"""
 
     # Compute distance to the nearest exit
     minDistanceToExit = 1000
@@ -246,7 +246,7 @@ class OffensiveAgent(DummyAgent):
       for food in foodList:
         if self.getMazeDistance(myPos, food) == minDistance:
           closestFood = food
-          self.debugDraw(food, [0.5,0.5,0])
+          #self.debugDraw(food, [0.5,0.5,0])
 
       # less food available, more likely to be spread apart, so don't worry as much about distance
       self.weights['distanceToFood'] = self.defaults['distanceToFood'] * ((len(foodList) / self.totalFood))
@@ -471,7 +471,7 @@ class DefensiveAgent(DummyAgent):
       self.debugDraw(self.quickGrabPos, [0,1,0])"""
 
     # Evaluate each action for h value
-    self.debugClear()
+    #self.debugClear()
     #start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
     """evalTime = time.time() - start
