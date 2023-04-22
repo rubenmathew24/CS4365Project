@@ -11,7 +11,6 @@ import game
 from distanceCalculator import Distancer
 from util import nearestPoint, manhattanDistance, PriorityQueueWithFunction
 import math
-import sys
 
 BIG_NUMBER = 10000
 
@@ -72,6 +71,7 @@ class DummyAgent(CaptureAgent):
     actions = gameState.getLegalActions(self.index)
 
     # Evaluate each action for h value
+    self.debugClear()
     start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
     #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
@@ -150,7 +150,8 @@ class OffensiveAgent(DummyAgent):
     actions = gameState.getLegalActions(self.index)
 
     # Evaluate each action for h value
-    start = time.time()
+    #start = time.time()
+    self.debugClear()
     values = [self.evaluate(gameState, a) for a in actions]
     #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
@@ -461,29 +462,29 @@ class DefensiveAgent(DummyAgent):
             disToFood = foodDis
             self.quickGrabPos = food
         disToQuickGrab = disToFood + self.findClosestGaps(self.quickGrabPos)[0][1]
-        #if disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1]) and :
         if (disToFood + 2 < min(self.getMazeDistance(self.enemy1['pos'], self.quickGrabPos), self.getMazeDistance(self.enemy2['pos'], self.quickGrabPos)) and 
             disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1])):
           self.quickGrab = True
         else:
             self.quickGrabPos = None
-    if self.quickGrabPos:
-      self.debugDraw(self.quickGrabPos, [0,1,0])
+    """if self.quickGrabPos:
+      self.debugDraw(self.quickGrabPos, [0,1,0])"""
 
     # Evaluate each action for h value
+    self.debugClear()
     #start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
-    #evalTime = time.time() - start
-    #if evalTime > 1:
-    #  print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
-    #  sys.exit()
-    #print('eval time for agent %d: %.4f' % (self.index, evalTime))
+    """evalTime = time.time() - start
+    if evalTime > 1:
+      print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
+      sys.exit()
+    print('eval time for agent %d: %.4f' % (self.index, evalTime))"""
 
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
@@ -494,7 +495,7 @@ class DefensiveAgent(DummyAgent):
     else:
       features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -520,13 +521,13 @@ class DefensiveAgent(DummyAgent):
     self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
     self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
     mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
-    self.debugDraw(mainEnemy['pos'], [1,0,0])
+    #self.debugDraw(mainEnemy['pos'], [1,0,0])
 
     # Draw gaps
-    self.debugDraw(self.enemy1['gapMain'][0], [1,0,0], clear=True)
+    """self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
     self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
     self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
-    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
+    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])"""
 
     ### Features ###
     features = util.Counter()
