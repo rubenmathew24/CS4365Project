@@ -384,6 +384,7 @@ class DefensiveAgent(DummyAgent):
 
     # Misc Info
     self.quickGrab = False
+    self.quickGrabPos = None
       
   def chooseAction(self, gameState):
     # Built-in get possible actions
@@ -408,6 +409,9 @@ class DefensiveAgent(DummyAgent):
       self.enemy2['movesSpentAttacking'] += 1
     
     # Look for quick grabs
+    if myPos == self.quickGrabPos or myPos == self.startPos:
+      self.quickGrab = False
+      self.quickGrabPos = None
     if not self.quickGrab:
       foodList = self.getFood(gameState).asList()
       if len(foodList) > 0:
@@ -418,13 +422,12 @@ class DefensiveAgent(DummyAgent):
             disToFood = foodDis
             self.quickGrabPos = food
         disToQuickGrab = disToFood + self.findClosestGaps(self.quickGrabPos)[0][1]
-        if disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1]):
+        #if disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1]) and :
+        if (disToFood + 2 < min(self.getMazeDistance(self.enemy1['pos'], self.quickGrabPos), self.getMazeDistance(self.enemy2['pos'], self.quickGrabPos)) and 
+            disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1])):
           self.quickGrab = True
         else:
             self.quickGrabPos = None
-    if myPos == self.quickGrabPos:
-      self.quickGrab = False
-      self.quickGrabPos = None
     if self.quickGrabPos:
       self.debugDraw(self.quickGrabPos, [0,1,0])
 
@@ -493,6 +496,7 @@ class DefensiveAgent(DummyAgent):
     features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
     features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
     features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
+    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(succPos) and action != Directions.STOP else BIG_NUMBER
     features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
     return features
   
@@ -509,7 +513,7 @@ class DefensiveAgent(DummyAgent):
   
   def getWeights(self, gameState, action):
     weights = {}
-    weights['disFromBorder'] = -1         # Prefer close to border
+    weights['disFromBorder'] = -.5         # Prefer close to border
     weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
     weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
@@ -520,7 +524,11 @@ class DefensiveAgent(DummyAgent):
     return weights
 
   def assessEnemies(self, enemy1, enemy2):
-    return max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
+    # Add # of carrying food
+    # Add comparison of distance from border (if mainEnemy far, guard against close altEnemy)
+    mainEnemy = max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
+    print(mainEnemy)
+    return mainEnemy
 
   def getDisToOffensiveEnemy(self, gameState, succPos):
     minDis = BIG_NUMBER
