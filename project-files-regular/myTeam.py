@@ -482,8 +482,8 @@ class DefensiveAgent(DummyAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    #print(list(zip(actions,values)))
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
     return random.choice(bestActions)   # Return random best action
   
   def evaluate(self, gameState, action):
@@ -494,7 +494,7 @@ class DefensiveAgent(DummyAgent):
     else:
       features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -514,9 +514,9 @@ class DefensiveAgent(DummyAgent):
     succ = self.getSuccessor(gameState, action)
     succState = succ.getAgentState(self.index)
     succPos = succState.getPosition()
+    succTeamSide = self.onTeamSide(succPos)
 
     # Enemy Info
-    
     self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
     self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
     mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
@@ -535,7 +535,8 @@ class DefensiveAgent(DummyAgent):
     features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
     features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
     features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
-    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(succPos) and action != Directions.STOP else BIG_NUMBER
+    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
+    features['dontStopOnEnemySide'] = BIG_NUMBER if (not succTeamSide) and action == Directions.STOP else 0
     features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
     return features
   
@@ -553,11 +554,12 @@ class DefensiveAgent(DummyAgent):
   def getWeights(self, gameState, action):
     weights = {}
     weights['disFromBorder'] = -.5         # Prefer close to border
+    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
     weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
     weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
-    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
+    weights['dontStopOnEnemySide'] = -1   # it aint safe out there
     weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
     weights['disToFood'] = -1             # For quickgrabbing
     return weights
@@ -566,7 +568,6 @@ class DefensiveAgent(DummyAgent):
     # Add # of carrying food
     # Add comparison of distance from border (if mainEnemy far, guard against close altEnemy)
     mainEnemy = max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
-    print(mainEnemy)
     return mainEnemy
 
   def getDisToOffensiveEnemy(self, gameState, succPos):
