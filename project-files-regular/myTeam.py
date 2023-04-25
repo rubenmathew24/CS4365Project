@@ -387,6 +387,10 @@ class DefensiveAgent(DummyAgent):
       self.teamIndices = gameState.getBlueTeamIndices()
       self.enemyIndices = gameState.getRedTeamIndices()
 
+    self.teammateIndex = self.teamIndices[0]
+    if self.teammateIndex == self.index:
+      self.teammateIndex = self.teamIndices[1]
+
     # Important positions
     self.startPos = gameState.getAgentPosition(self.index)
     walls = gameState.getWalls()
@@ -425,11 +429,24 @@ class DefensiveAgent(DummyAgent):
     # Misc Info
     self.quickGrab = False
     self.quickGrabPos = None
+    self.teamCapsules = []
+    self.enemyCapsules = []
+    capsulesPos = self.getCapsules()
+    for capsulePos in capsulesPos:
+      if self.onTeamSide(capsulePos):
+        self.teamCapsules.append(capsulePos)
+      else:
+        self.enemyCapsules.append(capsulePos)
+    self.enemyCapsuleTurns = 0
+    self.teamCapsuleTurns = 0
       
   def chooseAction(self, gameState):
     # Built-in get possible actions
     actions = gameState.getLegalActions(self.index)
     myPos = gameState.getAgentPosition(self.index)
+
+    # Collect team info
+    teammatePos = gameState.getAgentPosition(self.teammateIndex)
 
     # Collect enemy info
     enemy1Gaps = self.findClosestGaps(self.enemy1['pos'])
@@ -447,6 +464,22 @@ class DefensiveAgent(DummyAgent):
       self.enemy1['movesSpentAttacking'] += 1
     if self.enemy2['onTeamSide']:
       self.enemy2['movesSpentAttacking'] += 1
+
+    # Collect enemy capsule info
+    if self.enemyCapsuleTurns > 0:
+      self.enemyCapsuleTurns -= 1
+    for capsulePos in self.enemyCapsules:
+      if capsulePos == self.enemy1['pos'] or capsulePos == self.enemy2['pos']:
+        self.enemyCapsuleTurns = 40
+        self.enemyCapsules.remove(capsulePos)
+
+    # Collect team capsule info
+    if self.teamCapsuleTurns > 0:
+      self.teamCapsuleTurns -= 1
+    if capsulePos in self.teamCapsules:
+      if capsulePos == myPos or capsulePos == teammatePos:
+        self.teamCapsuleTurns = 40
+        self.teamCapsules.remove(capsulePos)
     
     # Look for quick grabs
     if myPos == self.quickGrabPos or myPos == self.startPos:
