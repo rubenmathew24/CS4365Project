@@ -431,12 +431,12 @@ class DefensiveAgent(DummyAgent):
     self.quickGrabPos = None
     self.teamCapsules = []
     self.enemyCapsules = []
-    capsulesPos = self.getCapsules()
+    capsulesPos = self.getCapsules(gameState)
     for capsulePos in capsulesPos:
       if self.onTeamSide(capsulePos):
-        self.teamCapsules.append(capsulePos)
-      else:
         self.enemyCapsules.append(capsulePos)
+      else:
+        self.teamCapsules.append(capsulePos)
     self.enemyCapsuleTurns = 0
     self.teamCapsuleTurns = 0
       
@@ -476,10 +476,13 @@ class DefensiveAgent(DummyAgent):
     # Collect team capsule info
     if self.teamCapsuleTurns > 0:
       self.teamCapsuleTurns -= 1
-    if capsulePos in self.teamCapsules:
+    for capsulePos in self.teamCapsules:
       if capsulePos == myPos or capsulePos == teammatePos:
         self.teamCapsuleTurns = 40
         self.teamCapsules.remove(capsulePos)
+      
+    print(self.teamCapsuleTurns)
+    print(self.enemyCapsuleTurns)
     
     # Look for quick grabs
     if myPos == self.quickGrabPos or myPos == self.startPos:
