@@ -87,7 +87,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -124,25 +124,15 @@ class OffensiveAgent(DummyAgent):
                     'distanceToCapsule': -40,  # Prioritize getting close to capsules
                     'distanceToFood': -15,  # Prioritize getting close to food
                     'distanceToExit': -1,  # Prioritize getting close to exit
-                    'notableDistanceFromEnemy' : -25, # Prioritize getting far from enemy
+                    'distanceFromEnemy' : 10, # Prioritize getting far from enemy
                     'neverStop' : -1, # Be a shark, never stop moving
-                    'onOurSide' : -40, # Discourage staying on our side
+                    'onOurSide' : -40000000, # Discourage staying on our side
                     'risky': -100, # Discourage going to risky positions
                     'quickGetaway' : 100 # If can quickly deposit food, do it
                     }
 
     # Weights that will be returned
-    self.weights = {'eatFood': self.defaults['eatFood'], 
-                    'eatCapsule': self.defaults['eatCapsule'], 
-                    'distanceToCapsule': self.defaults['distanceToCapsule'], 
-                    'distanceToFood': self.defaults['distanceToFood'], 
-                    'distanceToExit': self.defaults['distanceToExit'], 
-                    'notableDistanceFromEnemy': self.defaults['notableDistanceFromEnemy'], 
-                    'neverStop': self.defaults['neverStop'],
-                    'onOurSide': self.defaults['onOurSide'],
-                    'risky': self.defaults['risky'],
-                    'quickGetaway': self.defaults['quickGetaway']
-                    }
+    self.weights = self.defaults.copy()
 
   # Used to DEBUG
   def chooseAction(self, gameState):
@@ -158,19 +148,25 @@ class OffensiveAgent(DummyAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    #print(list(zip(actions,values)))
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
+
+    # ANTI GRIDDY
+    if len(self.history) > 5:
+      temp = self.history[-5:]
+      if temp[0] == temp[2] == temp[4] and temp[1] == temp[3] == move and temp[0] != temp[1]:
+        print("NO MORE GRIDDY")
+        allActions = sorted(zip(actions, values), key=lambda x: x[1], reverse=True)
+        for a in allActions:
+          if a[0] != move:
+            move = a[0]
+            break
+        # print("NEW MOVE:", move)
+        # exit(0)
+        
     self.history.append(move)
-
-    # DEBUG TO FIND WHEN IT STARTS DOING THE GRIDDY
-    # if len(self.history) > 6:
-    #   temp = self.history[-6:]
-    #   if temp[0] == temp[2] == temp[4] and temp[1] == temp[3] == temp[5] and temp[0] != temp[1]:
-    #     print("Stuck in loop")
-    #     exit(0)
-
     return move # Return random best action
 
   def getFeatures(self, gameState, action):
@@ -182,13 +178,17 @@ class OffensiveAgent(DummyAgent):
     myPos = successor.getAgentState(self.index).getPosition()
     numCarrying = gameState.getAgentState(self.index).numCarrying
 
+    self.resetWeights()
+
     # Stops it from stalling
-    if action == Directions.STOP: features['neverStop'] += 9999999
+    if action == Directions.STOP: features['neverStop'] += 99999999999
 
     # Prioritize not being our side unless its an exit
     if self.onTeamSide(myPos) and myPos not in self.gaps:
-      features['onOurSide'] = 1
+      features['onOurSide'] = 2
       self.weights['distanceToExit'] = -10
+    elif myPos in self.gaps and numCarrying == 0:
+      features['onOurSide'] = 1
     else:
       self.weights['distanceToExit'] = self.defaults['distanceToExit']
 
@@ -204,16 +204,16 @@ class OffensiveAgent(DummyAgent):
       features['distanceToCapsule'] = minDistance
 
       # DEBUG draw the closest capsule
-      """for capsule in capsuleList:
-        if self.getMazeDistance(myPos, capsule) == minDistance:
-          self.debugDraw(capsule, [0,0.8,0.8])"""
+      # for capsule in capsuleList:
+      #   if self.getMazeDistance(myPos, capsule) == minDistance:
+      #     self.debugDraw(capsule, [0,0.8,0.8])
 
     # Compute distance to the nearest exit
     minDistanceToExit = 1000
     if len(self.gaps) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, exit) for exit in self.gaps])
       minDistanceToExit = minDistance
-      features['distanceToExit'] += minDistance #* max(features['notableDistanceFromEnemy'], 1)
+      features['distanceToExit'] += minDistance #* max(features['distanceFromEnemy'], 1)
 
     # If can make a quick getaway, do it
     currentDistanceFromExit = min([self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), exit) for exit in self.gaps])
@@ -235,7 +235,6 @@ class OffensiveAgent(DummyAgent):
     #     exit(0)
     #   self.debugDraw(risk, [.2,.3,0])
 
-
     # Compute distance to the nearest food
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
       minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
@@ -253,7 +252,7 @@ class OffensiveAgent(DummyAgent):
       if self.getScore(successor) > 0: self.weights['distanceToFood'] = -5
 
     # Increase weight of distance to exit with the more food we have
-    self.weights['distanceToExit'] += -numCarrying*5
+    self.weights['distanceToExit'] = (-100 if numCarrying > 7 else -(numCarrying * 2))
 
     # Compute distance to the nearest enemy
     actualDistanceFromEnemy = 1000
@@ -263,8 +262,8 @@ class OffensiveAgent(DummyAgent):
       actualDistanceFromEnemy = min([self.getMazeDistance(myPos, successor.getAgentState(enemy).getPosition()) for enemy in enemyList])
 
       # Keep away if within 5 (Manhattan) units away from enemy (unless actually much further away)
-      features['notableDistanceFromEnemy'] = max(5-minDistance, 0)
-      if actualDistanceFromEnemy > minDistance + 8: features['notableDistanceFromEnemy'] = 1
+      features['distanceFromEnemy'] = actualDistanceFromEnemy
+      if actualDistanceFromEnemy > minDistance + 8: features['distanceFromEnemy'] = 1000
 
       if actualDistanceFromEnemy < 7:
         self.weights['risky'] = -200
@@ -277,33 +276,57 @@ class OffensiveAgent(DummyAgent):
         features = util.Counter()
         features['eatFood'] = -len(foodList)
         features['distanceToFood'] = tempDistance
-        self.weights['distanceToFood'] = self.defaults['distanceToFood'] * 10000
+        if action == Directions.STOP: features['neverStop'] += 99999999999
+        if self.onTeamSide(myPos) and myPos not in self.gaps:
+          features['onOurSide'] = 2
+          self.weights['distanceToExit'] = -10
+        elif myPos in self.gaps and numCarrying == 0:
+          features['onOurSide'] = 1
+        else:
+          self.weights['distanceToExit'] = self.defaults['distanceToExit']
+
+        self.weights['distanceToFood'] = self.defaults['distanceToFood'] * 0.5
 
         return features
 
-      # If enemy is incredibly close, prioritize getting away
-      if actualDistanceFromEnemy < 3 and currentDistanceFromExit > 3: self.weights['notableDistanceFromEnemy'] = -100
+      # If enemy is incredibly close, and far from exit, prioritize getting away
+      if actualDistanceFromEnemy < 3 and currentDistanceFromExit > 3: self.weights['distanceFromEnemy'] = 300
+
+      # If enemy is incredibly close, and close to exit, prioritize going home
+      if actualDistanceFromEnemy <= 3 and currentDistanceFromExit <= 3: 
+        self.weights['onOurSide'] = 0
+        self.weights['distanceToExit'] = -100000
+        return features
 
       # If enemies are not close to food, priortize it MORE
       minDistanceEnemyFromFood = min([self.getMazeDistance(closestFood, successor.getAgentState(enemy).getPosition()) for enemy in enemyList])
       if minDistanceEnemyFromFood < 10 and actualDistanceFromEnemy > 15 and not self.onTeamSide(myPos):
-        features['notableDistanceFromEnemy'] = 0
+        features['distanceFromEnemy'] = 1000
         return features
       
       # Don't get KILLED DUMMY
-      if features['notableDistanceFromEnemy'] == 4: self.weights['notableDistanceFromEnemy'] = -10000 
+      if actualDistanceFromEnemy == 1: 
+        self.weights['distanceFromEnemy'] = -99999
+        self.weights['distanceToExit'] = -99999999
+
+      # If eneemy is close, and we are close to capsule, prioritize eating it
+      if actualDistanceFromEnemy < 3 and features['distanceToCapsule'] < actualDistanceFromEnemy:
+        self.weights['eatCapsule'] = 99999999
+      else:
+        self.weights['eatCapsule'] = self.defaults['eatCapsule']
 
     # If we don't have much food, and close to exit (and not close to enemies), don't get capsules
-    if numCarrying < 2 and minDistanceToExit < 3 and actualDistanceFromEnemy > 5:
+    if (numCarrying < 2 and minDistanceToExit < 3) or (actualDistanceFromEnemy > 5):
       self.weights['distanceToCapsule'] = -500 
       self.weights['eatCapsule'] = -1000
+    else:
+      self.weights['eatCapsule'] = self.defaults['eatCapsule']
 
     # If capsule is active
     scaredTime = min([(successor.getAgentState(enemy).scaredTimer) for enemy in enemyList])
     if scaredTime > 0:
       # If we're carrying food, prioritize getting home
       if numCarrying > 4: self.weights['distanceToExit'] = -10000
-      else: self.weights['distanceToExit'] = -numCarrying * 20
 
       # Try not to get other capsules if plenty of time left
       if scaredTime > 15: 
@@ -311,11 +334,15 @@ class OffensiveAgent(DummyAgent):
 
       # Chase enemy if they're close AND if timer isn't low
       if scaredTime > 15:
-        self.weights['notableDistanceFromEnemy'] = self.defaults['notableDistanceFromEnemy']
-        features['notableDistanceFromEnemy'] = -features['notableDistanceFromEnemy'] * 60
-        if actualDistanceFromEnemy == 0: features['notableDistanceFromEnemy'] = -3000
-      if currentDistanceFromExit > 15 and actualDistanceFromEnemy > 3:
-        features['notableDistanceFromEnemy'] = 0  
+        self.weights['distanceFromEnemy'] = -self.defaults['distanceFromEnemy'] * 60
+        if actualDistanceFromEnemy < 2: 
+          self.weights['distanceFromEnemy'] = -10000
+          features['distanceFromEnemy'] = actualDistanceFromEnemy
+      # if currentDistanceFromExit > 15 and actualDistanceFromEnemy > 3:
+      #   features['distanceFromEnemy'] = 0  
+      else:
+        print("RUN FOR YOUR LIFE")
+        self.weights['distanceToExit'] = -10000000
 
     # Reset weights if capsule not active
     else:
@@ -326,6 +353,10 @@ class OffensiveAgent(DummyAgent):
 
   def getWeights(self, gameState, action):
     return self.weights
+
+  # Reset weights to default
+  def resetWeights(self):
+    self.weights = self.defaults.copy()
 
   # finds all positions that have 2 or more walls around them
   def findRiskyPositions(self, gameState):
