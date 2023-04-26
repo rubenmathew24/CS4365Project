@@ -87,7 +87,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -148,8 +148,8 @@ class OffensiveAgent(DummyAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    #print(list(zip(actions,values)))
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
 
@@ -276,6 +276,15 @@ class OffensiveAgent(DummyAgent):
         features = util.Counter()
         features['eatFood'] = -len(foodList)
         features['distanceToFood'] = tempDistance
+        if action == Directions.STOP: features['neverStop'] += 99999999999
+        if self.onTeamSide(myPos) and myPos not in self.gaps:
+          features['onOurSide'] = 2
+          self.weights['distanceToExit'] = -10
+        elif myPos in self.gaps and numCarrying == 0:
+          features['onOurSide'] = 1
+        else:
+          self.weights['distanceToExit'] = self.defaults['distanceToExit']
+
         self.weights['distanceToFood'] = self.defaults['distanceToFood'] * 0.5
 
         return features
