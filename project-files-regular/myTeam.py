@@ -398,6 +398,9 @@ class DefensiveAgent(DummyAgent):
     self.middleHeight = walls.height / 2  # True middle
     self.mapWidth = walls.width
 
+    # Construct heat map
+    self.map = [ [0]*walls.width for i in range(walls.height)]
+
     # Find borders
     self.teamBorder = math.floor(self.middleWidth) - 1
     self.enemyBorder = math.floor(self.middleWidth)
@@ -441,12 +444,14 @@ class DefensiveAgent(DummyAgent):
     self.teamCapsuleTurns = 0
       
   def chooseAction(self, gameState):
+    self.debugClear()
     # Built-in get possible actions
     actions = gameState.getLegalActions(self.index)
     myPos = gameState.getAgentPosition(self.index)
 
     # Collect team info
     teammatePos = gameState.getAgentPosition(self.teammateIndex)
+    self.myGaps = self.findClosestGaps(myPos)
 
     # Collect enemy info
     enemy1Gaps = self.findClosestGaps(self.enemy1['pos'])
@@ -479,10 +484,9 @@ class DefensiveAgent(DummyAgent):
     for capsulePos in self.teamCapsules:
       if capsulePos == myPos or capsulePos == teammatePos:
         self.teamCapsuleTurns = 40
-        self.teamCapsules.remove(capsulePos)
-      
-    print(self.teamCapsuleTurns)
-    print(self.enemyCapsuleTurns)
+        self.teamCapsules.remove(capsulePos) 
+    #print(self.teamCapsuleTurns)
+    #print(self.enemyCapsuleTurns)
     
     # Look for quick grabs
     if myPos == self.quickGrabPos or myPos == self.startPos:
@@ -505,9 +509,13 @@ class DefensiveAgent(DummyAgent):
             self.quickGrabPos = None
     """if self.quickGrabPos:
       self.debugDraw(self.quickGrabPos, [0,1,0])"""
+    
+    # Determine heat
+    for row in self.map:
+      row = [tileHeat - 1 for tileHeat in row]
+    self.map[myPos[1]][myPos[0]] += 1
 
     # Evaluate each action for h value
-    #self.debugClear()
     #start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
     """evalTime = time.time() - start
@@ -557,23 +565,24 @@ class DefensiveAgent(DummyAgent):
     self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
     self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
     mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
-    #self.debugDraw(mainEnemy['pos'], [1,0,0])
+    self.debugDraw(mainEnemy['pos'], [1,0,0])
 
     # Draw gaps
-    """self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
+    self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
     self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
     self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
-    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])"""
+    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
 
     ### Features ###
     features = util.Counter()
-    features['disFromBorder'] = abs(succPos[0] - self.teamBorder)
+    features['disFromBorder'] = self.getMazeDistance(succPos, self.myGaps[0][0])
     features['onEnemySide'] = not self.onTeamSide(succPos)
     features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
     features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
     features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
     features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
     features['dontStopOnEnemySide'] = BIG_NUMBER if (not succTeamSide) and action == Directions.STOP else 0
+    features['heat'] = self.map[int(succPos[1])][int(succPos[0])] if succTeamSide else 0
     features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
     return features
   
@@ -597,6 +606,7 @@ class DefensiveAgent(DummyAgent):
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
     weights['dontStopOnEnemySide'] = -1   # it aint safe out there
+    weights['heat'] = -.5                 # Discourage getting stuck
     weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
     weights['disToFood'] = -1             # For quickgrabbing
     return weights
