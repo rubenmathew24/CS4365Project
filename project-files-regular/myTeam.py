@@ -87,7 +87,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -148,8 +148,8 @@ class OffensiveAgent(DummyAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
 
@@ -461,16 +461,14 @@ class DefensiveAgent(DummyAgent):
     self.enemy2['movesSpentAttacking'] = 0
 
     # Misc Info
-    self.quickGrab = False
+    self.quickGrab = 0
     self.quickGrabPos = None
-    self.teamCapsules = []
-    self.enemyCapsules = []
-    capsulesPos = self.getCapsules(gameState)
-    for capsulePos in capsulesPos:
-      if self.onTeamSide(capsulePos):
-        self.enemyCapsules.append(capsulePos)
-      else:
-        self.teamCapsules.append(capsulePos)
+    self.teamCapsules = gameState.getBlueCapsules()
+    self.enemyCapsules = gameState.getRedCapsules()
+    if not gameState.isOnRedTeam(self.index):
+      self.teamCapsules = gameState.getRedCapsules()
+      self.enemyCapsules = gameState.getBlueCapsules()
+    
     self.enemyCapsuleTurns = 0
     self.teamCapsuleTurns = 0
       
@@ -482,7 +480,7 @@ class DefensiveAgent(DummyAgent):
 
     # Collect team info
     teammatePos = gameState.getAgentPosition(self.teammateIndex)
-    self.myGaps = self.findClosestGaps(myPos)
+    self.myGap = self.findClosestGaps(myPos)[0]
 
     # Collect enemy info
     enemy1Gaps = self.findClosestGaps(self.enemy1['pos'])
@@ -520,10 +518,13 @@ class DefensiveAgent(DummyAgent):
     #print(self.enemyCapsuleTurns)
     
     # Look for quick grabs
-    if myPos == self.quickGrabPos or myPos == self.startPos:
-      self.quickGrab = False
+    if self.onTeamSide(myPos):
+      self.quickGrab = 0
       self.quickGrabPos = None
-    if not self.quickGrab:
+    if myPos == self.quickGrabPos:
+      self.quickGrab = 1
+      self.quickGrabPos = None
+    if self.quickGrab < 2:
       foodList = self.getFood(gameState).asList()
       if len(foodList) > 0:
         disToFood = BIG_NUMBER
@@ -535,15 +536,16 @@ class DefensiveAgent(DummyAgent):
         disToQuickGrab = disToFood + self.findClosestGaps(self.quickGrabPos)[0][1]
         if (disToFood + 2 < min(self.getMazeDistance(self.enemy1['pos'], self.quickGrabPos), self.getMazeDistance(self.enemy2['pos'], self.quickGrabPos)) and 
             disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1])):
-          self.quickGrab = True
+          self.quickGrab = 2
         else:
             self.quickGrabPos = None
     """if self.quickGrabPos:
       self.debugDraw(self.quickGrabPos, [0,1,0])"""
     
     # Determine heat
-    for row in self.map:
-      row = [tileHeat - 1 for tileHeat in row]
+    for i in range(len(self.map)):
+      for j in range(len(self.map[i])):
+        self.map[i][j] -= 1
     self.map[myPos[1]][myPos[0]] += 1
 
     # Evaluate each action for h value
@@ -565,7 +567,7 @@ class DefensiveAgent(DummyAgent):
   def evaluate(self, gameState, action):
     # Determines value based on features and their weights
     features = None
-    if self.quickGrab:
+    if self.quickGrab == 2:
       features = self.getFeatures_QuickGrab(gameState, action)
     else:
       features = self.getFeatures(gameState, action)
@@ -606,7 +608,7 @@ class DefensiveAgent(DummyAgent):
 
     ### Features ###
     features = util.Counter()
-    features['disFromBorder'] = self.getMazeDistance(succPos, self.myGaps[0][0])
+    features['disFromBorder'] = self.getMazeDistance(succPos, self.myGap[0])
     features['onEnemySide'] = not self.onTeamSide(succPos)
     features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
     features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
@@ -614,6 +616,7 @@ class DefensiveAgent(DummyAgent):
     features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
     features['dontStopOnEnemySide'] = BIG_NUMBER if (not succTeamSide) and action == Directions.STOP else 0
     features['heat'] = self.map[int(succPos[1])][int(succPos[0])] if succTeamSide else 0
+    features['willDie'] = 1 if self.enemyCapsuleTurns > 0 and self.adjacentEnemies(succPos) else 0
     features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
     return features
   
@@ -630,7 +633,7 @@ class DefensiveAgent(DummyAgent):
   
   def getWeights(self, gameState, action):
     weights = {}
-    weights['disFromBorder'] = -.5         # Prefer close to border
+    weights['disFromBorder'] = -.5 if not self.quickGrab == 1 else -100        # Prefer close to border, if returning prioritze escaping
     weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
     weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
     weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
@@ -638,6 +641,7 @@ class DefensiveAgent(DummyAgent):
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
     weights['dontStopOnEnemySide'] = -1   # it aint safe out there
     weights['heat'] = -.5                 # Discourage getting stuck
+    weights['willDie'] = -BIG_NUMBER      # Fear death
     weights['pop'] = BIG_NUMBER           # If can eat enemy, do it  
     weights['disToFood'] = -1             # For quickgrabbing
     return weights
@@ -672,3 +676,11 @@ class DefensiveAgent(DummyAgent):
       gapDistances.append(self.getMazeDistance(gap, pos))
     gapsByDis = sorted(zip(self.gaps, gapDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1])))
     return gapsByDis
+  
+  def adjacentEnemies(self, pos):
+    up = (pos[0], pos[1]+1)
+    down = (pos[0], pos[1]-1)
+    left = (pos[0]-1, pos[1])
+    right = (pos[0]+1, pos[1])
+    return (up == self.enemy1['pos'] or down == self.enemy1['pos'] or left == self.enemy1['pos'] or right == self.enemy1['pos'] or
+            up == self.enemy2['pos'] or down == self.enemy2['pos'] or left == self.enemy2['pos'] or right == self.enemy2['pos'])
