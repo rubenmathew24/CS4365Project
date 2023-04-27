@@ -598,13 +598,13 @@ class DefensiveAgent(DummyAgent):
     self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
     self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
     mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
-    self.debugDraw(mainEnemy['pos'], [1,0,0])
+    #self.debugDraw(mainEnemy['pos'], [1,0,0], clear=True)
 
     # Draw gaps
-    self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
-    self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
-    self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
-    self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
+    # self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
+    # self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
+    # self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
+    # self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
 
     ### Features ###
     features = util.Counter()

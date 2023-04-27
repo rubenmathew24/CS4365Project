@@ -16,10 +16,12 @@ Offensive Agent
 - Risk feature of more pellets = time to return (Kinda done)
 - How to play around our power pellet? (Working Better)
 - Maps to focus on later:
-    - 4903
-    - 1492
-    - 2923 (winning state, but does a really stupid move)
-    - 4900
+    - 43825 (Winning state, but doing really stupid moves)
+    - 8746 (Winning state, but playing too defensively, and killing self at same time)
+    - 86243 (Winning state, but playing too risky, goes into dead ends when enemies far away, but doesn't cash in on it)
+    - 51249678 (Barely winning state, literally stuck at the border for 80% of the game)
+    - 5437 (Barely winning state, turns into a loading wheel)
+
 
 
 - Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
