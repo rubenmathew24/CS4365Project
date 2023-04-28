@@ -1,4 +1,5 @@
 Defensive Agent
+
 - Split up (if risky exit occupied, find other one)
     - If another offensive agent, find its risky exit
     - Else, find second risky exit for lone offensive agent
@@ -10,19 +11,25 @@ Defensive Agent
 - Possible distraction plays?
 
 
+------------------------------------------------------------------------------------------------------------------------
 Offensive Agent
-- A*? tbh depends on if we wanna blitz for early points or what
-- Most likely will need defensive agent to push in at same time as offensive to provide distraction/confusion
-- Risk feature of more pellets = time to return (Kinda done)
-- How to play around our power pellet? (Working Better)
+
+Handled:
+    - A*? tbh depends on if we wanna blitz for early points or what (just using getMazeDistance)
+    - Most likely will need defensive agent to push in at same time as offensive to provide distraction/confusion (defensive does quick grabs now)
+    - Risk feature of more pellets = time to return (Done)
+    - How to play around our power pellet? (Working Better, still some bugs to work out)
+
+Still TODO:
+    - Make it play like the defensive agent, when we are winning
+
 - Maps to focus on later:
     - 43825 (Winning state, but doing really stupid moves)
-    - 8746 (Winning state, but playing too defensively, and killing self at same time)
-    - 86243 (Winning state, but playing too risky, goes into dead ends when enemies far away, but doesn't cash in on it)
+    - 8746 (Winning state, but getting stuck by border wall)
+    - 86243 (Winning state, being chased by enemy, but not going for power pellet)
     - 51249678 (Barely winning state, literally stuck at the border for 80% of the game)
-    - 5437 (Barely winning state, turns into a loading wheel)
 
-
+------------------------------------------------------------------------------------------------------------------------
 
 - Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
 
