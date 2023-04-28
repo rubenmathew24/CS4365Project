@@ -166,6 +166,11 @@ class OffensiveAgent(DummyAgent):
         # print("NEW MOVE:", move)
         # exit(0)
         
+    #DEBUG RISKY
+    # for risk in self.risky:
+    #   # if gameState.getAgentState(self.index).getPosition() == risk and not self.onTeamSide(risk): exit(0)
+    #   self.debugDraw(risk, [.2,.3,0], clear=False)
+
     self.history.append(move)
     return move # Return random best action
 
@@ -228,12 +233,6 @@ class OffensiveAgent(DummyAgent):
       features['risky'] = 1 + features['distanceToExit']
     else: 
       features['risky'] = 0
-    
-    #DEBUG
-    # for risk in self.risky:
-    #   if gameState.getAgentState(self.index).getPosition() == risk and not self.onTeamSide(risk):
-    #     exit(0)
-    #   self.debugDraw(risk, [.2,.3,0])
 
     # Compute distance to the nearest food
     if len(foodList) > 0: # This should always be True,  but better safe than sorry
@@ -379,14 +378,17 @@ class OffensiveAgent(DummyAgent):
       for y in range(walls.height):
         if walls[x][y]: continue
         if (x,y) in riskyPositions: continue
+
+        if sum([walls[x+1][y],walls[x-1][y],walls[x][y-1],walls[x][y+1]]) == 3: extendedRiskyPositions.append((x,y))
+
         if not ((((x+1,y) in riskyPositions) != ((x-1,y) in riskyPositions)) or (((x,y+1) in riskyPositions) != ((x,y-1) in riskyPositions))): continue
-        if ((walls[x+1][y] and walls[x-1][y]) or (walls[x][y-1] and walls[x][y+1])):
-          extendedRiskyPositions.append((x,y))
-          
+        if ((walls[x+1][y] and walls[x-1][y]) or (walls[x][y-1] and walls[x][y+1])): extendedRiskyPositions.append((x,y))
+
+
     riskyPositions = riskyPositions + extendedRiskyPositions
 
 
-    #DEBUG
+    # #DEBUG
     # print(len(extendedRiskyPositions), len(riskyPositions))
     # print("  ", *indexes)
     # for y in range(walls.height):
