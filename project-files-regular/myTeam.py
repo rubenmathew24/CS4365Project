@@ -453,6 +453,8 @@ class DefensiveAgent(DummyAgent):
     self.enemy1['startPos'] = gameState.getInitialAgentPosition(self.enemy1['index'])
     self.enemy1['movesSpentAttacking'] = 0
     self.enemy1['vulnerableTurns'] = 0
+    self.enemy1['canAttack'] = False
+    self.enemy1['spawnToBorder'] = None
 
     enemy2Index = self.enemyIndices[1]
     self.enemy2 = {}
@@ -461,6 +463,8 @@ class DefensiveAgent(DummyAgent):
     self.enemy2['startPos'] = gameState.getInitialAgentPosition(self.enemy2['index'])
     self.enemy2['movesSpentAttacking'] = 0
     self.enemy2['vulnerableTurns'] = 0
+    self.enemy2['canAttack'] = False
+    self.enemy2['spawnToBorder'] = None
 
     # Misc Info
     self.quickGrab = 0
@@ -471,7 +475,8 @@ class DefensiveAgent(DummyAgent):
       self.teamCapsules = gameState.getRedCapsules()
       self.enemyCapsules = gameState.getBlueCapsules()
     self.enemyCapsuleTurns = 0
-    self.capsuleBuffer = 5
+    self.capsuleBuffer = 3
+    self.maxTime = 150 * 4
       
   def chooseAction(self, gameState):
     self.debugClear()
@@ -489,21 +494,38 @@ class DefensiveAgent(DummyAgent):
     self.enemy1['gapMain'] = enemy1Gaps[0]
     self.enemy1['gapAlt'] = enemy1Gaps[1]
     self.enemy1['pos'] = gameState.getAgentPosition(self.enemy1['index'])
+    self.enemy1['distanceTo'] = self.getMazeDistance(myPos, self.enemy1['pos'])
     self.enemy1['onTeamSide'] = self.onTeamSide(self.enemy1['pos'])
     self.enemy1['numCarrying'] = gameState.getAgentState(self.enemy1['index']).numCarrying
     self.enemy1['vulnerableTurns'] = self.enemy1['vulnerableTurns'] - 1 if self.enemy1['vulnerableTurns'] > 0 else 0
+    if self.enemy1['onTeamSide']:
+      self.enemy1['canAttack'] = True
+    if self.enemy1['spawnToBorder'] == None:
+      self.enemy1['spawnToBorder'] = self.enemy1['gapMain'][1]
     enemy2Gaps = self.findClosestGaps(self.enemy2['pos'])
     self.enemy2['gapMain'] = enemy2Gaps[0]
     self.enemy2['gapAlt'] = enemy2Gaps[1]
     self.enemy2['pos'] = gameState.getAgentPosition(self.enemy2['index'])
+    self.enemy2['distanceTo'] = self.getMazeDistance(myPos, self.enemy2['pos'])
     self.enemy2['onTeamSide'] = self.onTeamSide(self.enemy2['pos'])
     self.enemy2['numCarrying'] = gameState.getAgentState(self.enemy2['index']).numCarrying
     self.enemy2['vulnerableTurns'] = self.enemy2['vulnerableTurns'] - 1 if self.enemy2['vulnerableTurns'] > 0 else 0
+    if self.enemy2['onTeamSide']:
+      self.enemy2['canAttack'] = True
+    if self.enemy2['spawnToBorder'] == None:
+      self.enemy2['spawnToBorder'] = self.enemy2['gapMain'][1]
 
     if self.enemy1['onTeamSide']:
       self.enemy1['movesSpentAttacking'] += 1
     if self.enemy2['onTeamSide']:
       self.enemy2['movesSpentAttacking'] += 1
+
+    self.mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
+    self.mainEnemyClosestFood = self.getClosestFood(gameState, self.mainEnemy['pos'])[0]
+    if self.getMazeDistance(self.mainEnemy['gapMain'][0], self.mainEnemyClosestFood) < self.getMazeDistance(self.mainEnemy['gapAlt'][0], self.mainEnemyClosestFood):
+      self.mainEnemyGapPredict = self.mainEnemy['gapMain']
+    else:
+      self.mainEnemyGapPredict = self.mainEnemy['gapAlt'] 
 
     # Collect enemy capsule info
     if self.enemyCapsuleTurns > 0:
@@ -521,9 +543,9 @@ class DefensiveAgent(DummyAgent):
         self.teamCapsules.remove(capsulePos) 
     #print(self.teamCapsuleTurns)
     #print(self.enemyCapsuleTurns)
-    if self.enemy1['pos'] == self.enemy1['startPos'] or (abs(self.enemy1['pos'][0] - self.enemy1['startPos'][0]) + abs(self.enemy1['pos'][1] - self.enemy1['startPos'][1])) <= 1:
+    if self.enemy1['pos'] == self.enemy1['startPos'] or (abs(self.enemy1['pos'][0] - self.enemy1['startPos'][0]) + abs(self.enemy1['pos'][1] - self.enemy1['startPos'][1])) or (abs(self.enemy1['pos'][0] - self.enemy2['startPos'][0]) + abs(self.enemy1['pos'][1] - self.enemy2['startPos'][1])) <= 1:
       self.enemy1['vulnerableTurns'] = 0
-    if self.enemy2['pos'] == self.enemy2['startPos'] or (abs(self.enemy2['pos'][0] - self.enemy2['startPos'][0]) + abs(self.enemy2['pos'][1] - self.enemy2['startPos'][1])) <= 1:
+    if self.enemy2['pos'] == self.enemy2['startPos'] or (abs(self.enemy2['pos'][0] - self.enemy2['startPos'][0]) + abs(self.enemy2['pos'][1] - self.enemy2['startPos'][1])) or (abs(self.enemy2['pos'][0] - self.enemy1['startPos'][0]) + abs(self.enemy2['pos'][1] - self.enemy1['startPos'][1]))<= 1:
       self.enemy2['vulnerableTurns'] = 0
 
     # Look for quick grabs
@@ -534,14 +556,10 @@ class DefensiveAgent(DummyAgent):
       self.quickGrab = 1
       self.quickGrabPos = None
     if self.quickGrab < 2:
-      foodList = self.getFood(gameState).asList()
-      if len(foodList) > 0:
-        disToFood = BIG_NUMBER
-        for food in foodList:
-          foodDis = self.getMazeDistance(myPos, food)
-          if foodDis < disToFood:
-            disToFood = foodDis
-            self.quickGrabPos = food
+      closestFood = self.getClosestFood(gameState, myPos)
+      if closestFood[0] != None:
+        self.quickGrabPos = closestFood[0]
+        disToFood = closestFood[1]
         disToQuickGrab = disToFood + self.findClosestGaps(self.quickGrabPos)[0][1]
 
         enemy1DisFromFood = self.getMazeDistance(self.enemy1['pos'], self.quickGrabPos)
@@ -551,11 +569,15 @@ class DefensiveAgent(DummyAgent):
           self.quickGrab = 1
           self.quickGrabPos = None
         # If food is reachable without sacrificing defense
-        elif (disToFood + 1 < min(enemy1DisFromFood, enemy2DisFromFood) and 
-            disToQuickGrab < min(self.enemy1['gapMain'][1], self.enemy2['gapMain'][1])):
-          self.quickGrab = 2
+        elif (disToFood + 1 < min(enemy1DisFromFood, enemy2DisFromFood)):
+          if (((not self.enemy1['canAttack'] and disToQuickGrab + 3 < self.enemy1['distanceTo']) or disToQuickGrab + 3 < self.enemy1['gapMain'][1]) and
+              ((not self.enemy2['canAttack'] and disToQuickGrab + 3 < self.enemy2['distanceTo']) or disToQuickGrab + 3 < self.enemy2['gapMain'][1]) and
+              (not (not self.enemy1['canAttack'] and not self.enemy1['canAttack']))):
+            self.quickGrab = 2
+          else:
+            self.quickGrabPos = None
         # If enemies vulnerable (or far away), quickGrab
-        elif ((self.enemy1['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer and self.enemy2['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer) or
+        elif ((self.enemy1['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer and self.enemy2['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer and disToQuickGrab + 2 < self.mainEnemy['gapMain'][1]) or
               (self.enemy1['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer and disToFood + 2 < enemy2DisFromFood and disToQuickGrab < self.enemy2['gapMain'][1]) or
               (disToFood + 2 < enemy1DisFromFood and disToQuickGrab < self.enemy1['gapMain'][1] and self.enemy2['vulnerableTurns'] > self.myGap[1] + self.capsuleBuffer)):
           # But consider if heavyEnemy can cash out
@@ -583,7 +605,6 @@ class DefensiveAgent(DummyAgent):
         if self.map[i][j] > 0:
           self.map[i][j] -= .5
     self.map[myPos[1]][myPos[0]] += 1
-
     # Evaluate each action for h value
     start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
@@ -634,7 +655,6 @@ class DefensiveAgent(DummyAgent):
     # Enemy Info
     self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
     self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
-    mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
     #self.debugDraw(mainEnemy['pos'], [1,0,0], clear=True)
 
     # Draw gaps
@@ -647,10 +667,10 @@ class DefensiveAgent(DummyAgent):
     features = util.Counter()
     features['disFromBorder'] = succGap[1]
     features['onEnemySide'] = not self.onTeamSide(succPos)
-    features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
-    features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
+    features['mainEnemyRisk'] = self.getMazeDistance(succPos, self.mainEnemy['gapMain'][0])
+    features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, self.mainEnemy['gapAlt'][0])
     features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
-    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
+    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, self.mainEnemy['pos']) if self.onTeamSide(self.mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
     features['dontStopOnEnemySide'] = BIG_NUMBER if (not succTeamSide) and action == Directions.STOP else 0
     features['heat'] = self.map[int(succPos[1])][int(succPos[0])] if succTeamSide else 0
     features['willDie'] = 1 if self.enemyCapsuleTurns > 0 and self.adjacentEnemies(succPos) else 0
@@ -680,10 +700,16 @@ class DefensiveAgent(DummyAgent):
     weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
     weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
     weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
+    # If mainEnemy close to crossing, try to predict based on closest food
+    if self.mainEnemyGapPredict[1] < 3:
+      if self.mainEnemyGapPredict == self.mainEnemy['gapMain']:
+        weights['mainEnemyRisk'] = -5
+      else:
+        weights['mainEnemyAltRisk'] = -5
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
     weights['dontStopOnEnemySide'] = -1   # it aint safe out there
-    weights['heat'] = -4                  # Discourage getting stuck
+    weights['heat'] = -1.5                # Discourage getting stuck
     weights['willDie'] = -BIG_NUMBER      # Fear death
     weights['pop'] = BIG_NUMBER           # If can eat enemy, do it
 
@@ -737,3 +763,15 @@ class DefensiveAgent(DummyAgent):
       return self.enemy1
     else:
       return self.enemy2
+    
+  def getClosestFood(self, gameState, pos):
+    foodList = self.getFood(gameState).asList()
+    if len(foodList) > 0:
+      disToFood = BIG_NUMBER
+      closestFood = None
+      for food in foodList:
+        foodDis = self.getMazeDistance(pos, food)
+        if foodDis < disToFood:
+          disToFood = foodDis
+          closestFood = food
+    return (closestFood, disToFood)
