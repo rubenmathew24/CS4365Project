@@ -92,7 +92,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -107,6 +107,39 @@ class DummyAgent(CaptureAgent):
     else:
       return successor
 
+  def getDisToOffensiveEnemy(self, gameState, succPos):
+    minDis = BIG_NUMBER
+    for enemy in self.enemyIndices:
+      enemyPos = gameState.getAgentPosition(enemy)
+      if self.onTeamSide(enemyPos):
+        disToEnemy = self.getMazeDistance(succPos, enemyPos)
+        if disToEnemy < minDis:
+          minDis = disToEnemy
+    return minDis
+    
+  # Returns list of gaps sorted by proximity
+  def findClosestGaps(self, pos):
+    gapDistances = []
+    for gap in self.gaps:
+      gapDistances.append(self.getMazeDistance(gap, pos))
+    gapsByDis = sorted(zip(self.gaps, gapDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1])))
+    return gapsByDis
+  
+  def adjacentEnemies(self, pos):
+    up = (pos[0], pos[1]+1)
+    down = (pos[0], pos[1]-1)
+    left = (pos[0]-1, pos[1])
+    right = (pos[0]+1, pos[1])
+    return (up == self.enemy1['pos'] or down == self.enemy1['pos'] or left == self.enemy1['pos'] or right == self.enemy1['pos'] or
+            up == self.enemy2['pos'] or down == self.enemy2['pos'] or left == self.enemy2['pos'] or right == self.enemy2['pos'])
+
+  def enemyWithMostFood(self):
+    if (self.enemy1['numCarrying'] == 0 and self.enemy2['numCarrying'] == 0):
+      return None
+    if (self.enemy1['numCarrying'] > self.enemy2['numCarrying']):
+      return self.enemy1
+    else:
+      return self.enemy2
   # Determines if agent is on our team's side
   def onTeamSide(self, pos):
     if self.redTeam: 
@@ -121,6 +154,7 @@ class OffensiveAgent(DummyAgent):
 
     self.history = []
     self.totalFood = len(self.getFood(gameState).asList())
+    self.originalCapsules = self.getCapsules(gameState)
     self.risky = self.findRiskyPositions(gameState)
 
     # Save the default weights because weights can be changed
@@ -133,27 +167,72 @@ class OffensiveAgent(DummyAgent):
                     'neverStop' : -1, # Be a shark, never stop moving
                     'onOurSide' : -40000000, # Discourage staying on our side
                     'risky': -100, # Discourage going to risky positions
+                    'improveScore': 1000000, # Prioritize improving score
                     'quickGetaway' : 100 # If can quickly deposit food, do it
                     }
 
     # Weights that will be returned
     self.weights = self.defaults.copy()
 
+    # Set up Defensive capabilities
+    # Enemy Info
+    enemy1Index = self.enemyIndices[0]
+    self.enemy1 = {}
+    self.enemy1['index'] = enemy1Index
+    self.enemy1['pos'] = gameState.getAgentPosition(self.enemy1['index'])
+    self.enemy1['startPos'] = gameState.getInitialAgentPosition(self.enemy1['index'])
+    self.enemy1['movesSpentAttacking'] = 0
+    self.enemy1['vulnerableTurns'] = 0
+
+    enemy2Index = self.enemyIndices[1]
+    self.enemy2 = {}
+    self.enemy2['index'] = enemy2Index
+    self.enemy2['pos'] = gameState.getAgentPosition(self.enemy2['index'])
+    self.enemy2['startPos'] = gameState.getInitialAgentPosition(self.enemy2['index'])
+    self.enemy2['movesSpentAttacking'] = 0
+    self.enemy2['vulnerableTurns'] = 0
+
+    # Construct heat map
+    self.map = [ [0]*gameState.getWalls().width for i in range(gameState.getWalls().height)]
+
   def chooseAction(self, gameState):
     # Built-in get possible actions
     actions = gameState.getLegalActions(self.index)
-
+    myPos = gameState.getAgentPosition(self.index)
     # Evaluate each action for h value
     #start = time.time()
     #self.debugClear()
     values = [self.evaluate(gameState, a) for a in actions]
     #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
+    # Collect enemy info
+    enemy1Gaps = self.findClosestGaps(self.enemy1['pos'])
+    self.enemy1['gapMain'] = enemy1Gaps[0]
+    self.enemy1['gapAlt'] = enemy1Gaps[1]
+    self.enemy1['pos'] = gameState.getAgentPosition(self.enemy1['index'])
+    self.enemy1['onTeamSide'] = self.onTeamSide(self.enemy1['pos'])
+    self.enemy1['numCarrying'] = gameState.getAgentState(self.enemy1['index']).numCarrying
+    self.enemy1['vulnerableTurns'] = self.enemy1['vulnerableTurns'] - 1 if self.enemy1['vulnerableTurns'] > 0 else 0
+    enemy2Gaps = self.findClosestGaps(self.enemy2['pos'])
+    self.enemy2['gapMain'] = enemy2Gaps[0]
+    self.enemy2['gapAlt'] = enemy2Gaps[1]
+    self.enemy2['pos'] = gameState.getAgentPosition(self.enemy2['index'])
+    self.enemy2['onTeamSide'] = self.onTeamSide(self.enemy2['pos'])
+    self.enemy2['numCarrying'] = gameState.getAgentState(self.enemy2['index']).numCarrying
+    self.enemy2['vulnerableTurns'] = self.enemy2['vulnerableTurns'] - 1 if self.enemy2['vulnerableTurns'] > 0 else 0
+
+    # Determine heat
+    for i in range(len(self.map)):
+      for j in range(len(self.map[i])):
+        if self.map[i][j] > 0:
+          self.map[i][j] -= .5
+    self.map[myPos[1]][myPos[0]] += 1
+
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    #print(list(zip(actions,values)))
+    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
 
@@ -161,7 +240,7 @@ class OffensiveAgent(DummyAgent):
     if len(self.history) > 5:
       temp = self.history[-5:]
       if temp[0] == temp[2] == temp[4] and temp[1] == temp[3] == move and temp[0] != temp[1]:
-        print("NO MORE GRIDDY")
+        # print("NO MORE GRIDDY")
         allActions = sorted(zip(actions, values), key=lambda x: x[1], reverse=True)
         for a in allActions:
           if a[0] != move:
@@ -179,6 +258,28 @@ class OffensiveAgent(DummyAgent):
     return move # Return random best action
 
   def getFeatures(self, gameState, action):
+    successor = self.getSuccessor(gameState, action)
+    myPos = successor.getAgentState(self.index).getPosition()
+
+    # If we are on our side and in a winning state, play defensively
+    if self.onTeamSide(myPos) and self.getScore(successor) > 5:
+      return self.getDefensiveFeatures(gameState, action)
+    else:
+      return self.getOffensiveFeatures(gameState, action)
+
+  def getWeights(self, gameState, action):
+    successor = self.getSuccessor(gameState, action)
+    myPos = successor.getAgentState(self.index).getPosition()
+
+    # If we are on our side and in a winning state, play defensively
+    if self.onTeamSide(myPos) and self.getScore(successor) > 5:
+      return self.getDefensiveWeights(gameState, action)
+    else:
+      return self.getOffensiveWeights(gameState, action)
+
+# Offensive mode:
+
+  def getOffensiveFeatures(self, gameState, action):
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
     foodList = self.getFood(successor).asList()  
@@ -188,6 +289,9 @@ class OffensiveAgent(DummyAgent):
     numCarrying = gameState.getAgentState(self.index).numCarrying
 
     self.resetWeights()
+
+    # Prioritize improving score
+    features['score'] = self.getScore(successor)
 
     # Stops it from stalling
     if action == Directions.STOP: features['neverStop'] += 99999999999
@@ -260,7 +364,7 @@ class OffensiveAgent(DummyAgent):
       if minDistance < 3: features['distanceFromEnemy'] = 1000
 
       # If enemy is close, DO NOT go for risky food
-      if actualDistanceFromEnemy < 7: self.weights['risky'] = -200
+      if actualDistanceFromEnemy <= 7: self.weights['risky'] = -1000
 
       # If enemy is FAR away, increase food weight, don't worry about anything else
       if actualDistanceFromEnemy > 15: 
@@ -324,8 +428,68 @@ class OffensiveAgent(DummyAgent):
 
     return features
 
-  def getWeights(self, gameState, action):
+  def getOffensiveWeights(self, gameState, action):
     return self.weights
+
+# Defensive mode:
+  def getDefensiveFeatures(self, gameState, action):
+    # Successor info
+    succ = self.getSuccessor(gameState, action)
+    succState = succ.getAgentState(self.index)
+    succPos = succState.getPosition()
+    succTeamSide = self.onTeamSide(succPos)
+    succGap = self.findClosestGaps(succPos)[0]
+
+    # Enemy Info
+    self.enemy1['distanceTo'] =  self.getMazeDistance(succPos, self.enemy1['pos'])
+    self.enemy2['distanceTo'] = self.getMazeDistance(succPos, self.enemy2['pos'])
+    mainEnemy = self.assessEnemies(self.enemy1, self.enemy2)
+    #self.debugDraw(mainEnemy['pos'], [1,0,0], clear=True)
+
+    # Draw gaps
+    # self.debugDraw(self.enemy1['gapMain'][0], [1,0,0])
+    # self.debugDraw(self.enemy1['gapAlt'][0], [1,.4,.4])
+    # self.debugDraw(self.enemy2['gapMain'][0], [0,1,0])
+    # self.debugDraw(self.enemy2['gapAlt'][0], [.6,1,.6])
+
+    ### Features ###
+    features = util.Counter()
+    features['disFromBorder'] = succGap[1]
+    features['onEnemySide'] = not self.onTeamSide(succPos)
+    features['mainEnemyRisk'] = self.getMazeDistance(succPos, mainEnemy['gapMain'][0])
+    features['mainEnemyAltRisk'] = self.getMazeDistance(succPos, mainEnemy['gapAlt'][0])
+    features['mainEnemyRiskBalance'] = abs(features['mainEnemyRisk'] - features['mainEnemyAltRisk'])
+    features['disToOffensiveEnemy'] = self.getMazeDistance(succPos, mainEnemy['pos']) if self.onTeamSide(mainEnemy['pos']) and action != Directions.STOP else BIG_NUMBER
+    features['dontStopOnEnemySide'] = BIG_NUMBER if (not succTeamSide) and action == Directions.STOP else 0
+    features['heat'] = self.map[int(succPos[1])][int(succPos[0])] if succTeamSide else 0
+    features['willDie'] = 1 if gameState.getAgentState(self.index).scaredTimer > 0 and self.adjacentEnemies(succPos) else 0
+    features['pop'] = 1 if self.getDisToOffensiveEnemy(gameState, succPos) < 1 else 0
+    features['defensiveMode'] = 1
+    return features
+
+  def getDefensiveWeights(self, gameState, action):
+    weights = {}
+    weights['disFromBorder'] = -100        # Prefer close to border, if returning prioritze escaping
+    weights['onEnemySide'] = -5           # Discourage entering enemy side when unnecesary
+    weights['mainEnemyRisk'] = -1         # Move towards mainEnemy's mainGap
+    weights['mainEnemyAltRisk'] = -1      # Move towards mainEnemy's altGap
+    weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
+    weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
+    weights['dontStopOnEnemySide'] = -1   # it aint safe out there
+    weights['heat'] = -4                  # Discourage getting stuck
+    weights['willDie'] = -BIG_NUMBER      # Fear death
+    weights['pop'] = BIG_NUMBER           # If can eat enemy, do it
+    weights['defensiveMode'] = 9999999    # Being in defensive mode is a GOOOD THING, PLEASE SCORE
+
+    weights['disToFood'] = -1             # For quickgrabbing
+    weights['outOfCapsuleTurns'] = -1     # If out of turns, run
+    return weights
+
+# Helper functions:
+  def assessEnemies(self, enemy1, enemy2):
+    mainEnemy = sorted((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])[1]
+    # print('Offensive Main enemy:', mainEnemy['index'])
+    return mainEnemy
 
   # Reset weights to default
   def resetWeights(self):
@@ -339,6 +503,7 @@ class OffensiveAgent(DummyAgent):
 
     riskyPositions = []
 
+    # Finds all positions that have 6 or more walls around them
     for x in range(walls.width):
       for y in range(walls.height):
         if walls[x][y]: continue
@@ -348,6 +513,7 @@ class OffensiveAgent(DummyAgent):
 
     extendedRiskyPositions = []
 
+    # Finds all positions that have 3 walls around them or a corner close to a risky position
     for x in range(walls.width):
       for y in range(walls.height):
         if walls[x][y]: continue
@@ -358,9 +524,10 @@ class OffensiveAgent(DummyAgent):
         if not ((((x+1,y) in riskyPositions) != ((x-1,y) in riskyPositions)) or (((x,y+1) in riskyPositions) != ((x,y-1) in riskyPositions))): continue
         if ((walls[x+1][y] and walls[x-1][y]) or (walls[x][y-1] and walls[x][y+1])): extendedRiskyPositions.append((x,y))
 
-
     riskyPositions = riskyPositions + extendedRiskyPositions
 
+    for capsule in self.originalCapsules:
+      if capsule in riskyPositions: riskyPositions.remove(capsule)
 
     # #DEBUG
     # print(len(extendedRiskyPositions), len(riskyPositions))
@@ -591,7 +758,7 @@ class DefensiveAgent(DummyAgent):
     if evalTime > 1:
       print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
       sys.exit()
-    print('eval time for agent %d: %.4f' % (self.index, evalTime))
+    #print('eval time for agent %d: %.4f' % (self.index, evalTime))
 
     # Find actions of max value
     bestValue = max(values)
@@ -695,45 +862,5 @@ class DefensiveAgent(DummyAgent):
     # Add # of carrying food
     # Add comparison of distance from border (if mainEnemy far, guard against close altEnemy)
     mainEnemy = max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
+    # print('Defensive Main enemy:', mainEnemy['index'])
     return mainEnemy
-
-  def getDisToOffensiveEnemy(self, gameState, succPos):
-    minDis = BIG_NUMBER
-    for enemy in self.enemyIndices:
-      enemyPos = gameState.getAgentPosition(enemy)
-      if self.onTeamSide(enemyPos):
-        disToEnemy = self.getMazeDistance(succPos, enemyPos)
-        if disToEnemy < minDis:
-          minDis = disToEnemy
-    return minDis
-  
-  # Determines if agent is on our team's side
-  def onTeamSide(self, pos):
-    if self.redTeam: 
-      return pos[0] in range(math.floor(self.middleWidth))
-    else:
-      return pos[0] in range(math.floor(self.middleWidth), self.mapWidth)
-    
-  # Returns list of gaps sorted by proximity
-  def findClosestGaps(self, pos):
-    gapDistances = []
-    for gap in self.gaps:
-      gapDistances.append(self.getMazeDistance(gap, pos))
-    gapsByDis = sorted(zip(self.gaps, gapDistances), key=lambda pair : (pair[1], abs(self.middleHeight - pair[0][1])))
-    return gapsByDis
-  
-  def adjacentEnemies(self, pos):
-    up = (pos[0], pos[1]+1)
-    down = (pos[0], pos[1]-1)
-    left = (pos[0]-1, pos[1])
-    right = (pos[0]+1, pos[1])
-    return (up == self.enemy1['pos'] or down == self.enemy1['pos'] or left == self.enemy1['pos'] or right == self.enemy1['pos'] or
-            up == self.enemy2['pos'] or down == self.enemy2['pos'] or left == self.enemy2['pos'] or right == self.enemy2['pos'])
-
-  def enemyWithMostFood(self):
-    if (self.enemy1['numCarrying'] == 0 and self.enemy2['numCarrying'] == 0):
-      return None
-    if (self.enemy1['numCarrying'] > self.enemy2['numCarrying']):
-      return self.enemy1
-    else:
-      return self.enemy2

@@ -24,11 +24,7 @@ Still TODO:
     - Make it play like the defensive agent, when we are winning
 
 - Maps to focus on later:
-    - 43825 (Winning state, but doing really stupid moves)
     - 8746 (Winning state, but getting stuck by border wall)
-    - 86243 (Winning state, being chased by enemy, but not going for power pellet)
-    - 51249678 (Barely winning state, literally stuck at the border for 80% of the game)
-
 ------------------------------------------------------------------------------------------------------------------------
 
 - Also, we could ask Daniel & Navin if they wanna test our agents against each other. Either way, its happening in the tournament. But if we learn off of each other, we both go higher.
