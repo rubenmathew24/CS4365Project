@@ -11,7 +11,7 @@ import game
 from distanceCalculator import Distancer
 from util import nearestPoint, manhattanDistance, PriorityQueueWithFunction
 import math
-import sys
+#import sys
 
 BIG_NUMBER = 10000
 
@@ -92,7 +92,7 @@ class DummyAgent(CaptureAgent):
     # Determines value based on features and their weights
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
+    #print("\n","\t"+action + ": " + str(features * weights), "F: " + str(features), "W: " + str(weights), "\n", sep="\n\t")
     return features * weights
   
   def getSuccessor(self, gameState, action):
@@ -231,8 +231,8 @@ class OffensiveAgent(DummyAgent):
     # Find actions of max value
     bestValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == bestValue]
-    print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
-    print(list(zip(actions,values)))
+    #print(type(self), "Best Actions:", bestActions, "Best Value:", bestValue)
+    #print(list(zip(actions,values)))
 
     move = random.choice(bestActions)
 
@@ -773,12 +773,12 @@ class DefensiveAgent(DummyAgent):
           self.map[i][j] -= .5
     self.map[myPos[1]][myPos[0]] += 1
     # Evaluate each action for h value
-    start = time.time()
+    #start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
-    evalTime = time.time() - start
-    if evalTime > 1:
-      print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
-      sys.exit()
+    #evalTime = time.time() - start
+    #if evalTime > 1:
+      #print('eval time for agent %d took too long!: %.4f' % (self.index, evalTime))
+      #sys.exit()
     #print('eval time for agent %d: %.4f' % (self.index, evalTime))
 
     # Find actions of max value
@@ -870,9 +870,9 @@ class DefensiveAgent(DummyAgent):
     # If mainEnemy close to crossing, try to predict based on closest food
     if self.mainEnemyGapPredict[1] < 3:
       if self.mainEnemyGapPredict == self.mainEnemy['gapMain']:
-        weights['mainEnemyRisk'] = -5
+        weights['mainEnemyRisk'] = -3
       else:
-        weights['mainEnemyAltRisk'] = -5
+        weights['mainEnemyAltRisk'] = -3
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
     weights['dontStopOnEnemySide'] = -1   # it aint safe out there
