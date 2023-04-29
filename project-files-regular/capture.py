@@ -58,7 +58,7 @@ from game import Grid
 from game import Configuration
 from game import Agent
 from game import reconstituteGrid
-import sys, util, types, time, random, importlib.machinery
+import sys, util, types, time, random, importlib.machinery, platform
 import keyboardAgents
 
 # If you change these, you won't affect the server, so you can't cheat
@@ -942,6 +942,8 @@ def replayGame( layout, agents, actions, display, length, redTeamName, blueTeamN
     display.initialize(state.data)
 
     for action in actions:
+      # Mac goes too fast without this
+      if(platform.machine() == 'arm64'): time.sleep(0.005)
       # Execute the action
       state = state.generateSuccessor( *action )
       # Change the display
