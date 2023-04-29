@@ -890,3 +890,15 @@ class DefensiveAgent(DummyAgent):
     mainEnemy = max((enemy1, enemy2), key = lambda enemy : enemy['movesSpentAttacking'])
     # print('Defensive Main enemy:', mainEnemy['index'])
     return mainEnemy
+  
+  def getClosestFood(self, gameState, pos):
+    foodList = self.getFood(gameState).asList()
+    if len(foodList) > 0:
+      disToFood = BIG_NUMBER
+      closestFood = None
+      for food in foodList:
+        foodDis = self.getMazeDistance(pos, food)
+        if foodDis < disToFood:
+          disToFood = foodDis
+          closestFood = food
+    return (closestFood, disToFood)
