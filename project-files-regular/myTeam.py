@@ -876,7 +876,7 @@ class DefensiveAgent(DummyAgent):
     weights['mainEnemyRiskBalance'] = -1  # Prefer in-between of mainEnemy's 2 gaps
     weights['disToOffensiveEnemy'] = -3   # Chase after nearby enemies
     weights['dontStopOnEnemySide'] = -1   # it aint safe out there
-    weights['heat'] = -1.5                # Discourage getting stuck
+    weights['heat'] = -1.5 * min(1, (self.mainEnemy['distanceTo'] - 1) / 5)              # Discourage getting stuck
     weights['willDie'] = -BIG_NUMBER      # Fear death
     weights['pop'] = BIG_NUMBER           # If can eat enemy, do it
 
