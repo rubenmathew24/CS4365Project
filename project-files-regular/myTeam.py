@@ -159,7 +159,7 @@ class OffensiveAgent(DummyAgent):
 
     # Save the default weights because weights can be changed
     self.defaults = {'eatFood': 100, # Prioritize eating food
-                    'eatCapsule': 2000, # Prioritize eating capsules
+                    'eatCapsule': 2500, # Prioritize eating capsules
                     'distanceToCapsule': -40,  # Prioritize getting close to capsules
                     'distanceToFood': -15,  # Prioritize getting close to food
                     'distanceToExit': -1,  # Prioritize getting close to exit
